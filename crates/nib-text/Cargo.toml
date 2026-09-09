@@ -1,0 +1,20 @@
+[package]
+name = "cosmic-ext-nib-text"
+description = "Plain text out of a Nib document, with mail quoting"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+
+[lib]
+name = "nib_text"
+path = "src/lib.rs"
+
+[dependencies]
+nib-model.workspace = true
+unicode-segmentation.workspace = true
+
+[lints]
+workspace = true

@@ -142,7 +142,13 @@ fn build() -> Schema {
             // A list item begins with a paragraph and may then hold anything,
             // including a nested list. Requiring the leading paragraph is what
             // gives the caret somewhere to be in an empty item.
-            NodeSpec::new().content("paragraph block*").defining(),
+            // `checked` is absent on an ordinary item and a boolean on a task
+            // item, which is how a task list round-trips without a second node
+            // type that is a list item in all but name.
+            NodeSpec::new()
+                .content("paragraph block*")
+                .defining()
+                .attr("checked", AttrSpec::new(Value::Null)),
         )
         // Tables. Cells are `isolating`, which is what stops a selection, a
         // join or a lift from reaching across a cell boundary — the property

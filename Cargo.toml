@@ -14,7 +14,12 @@ resolver = "3"
 # Members are added as they are written, rather than declared up front and
 # left empty: an empty crate in the workspace is a crate that compiles, and a
 # crate that compiles is one nobody notices is a stub.
-members = ["crates/nib-model", "crates/nib-html"]
+members = [
+    "crates/nib-model",
+    "crates/nib-html",
+    "crates/nib-markdown",
+    "crates/nib-text",
+]
 
 [workspace.package]
 version = "0.1.0"
@@ -41,6 +46,9 @@ thiserror = "2"
 # bytes mean, which is the shape of every sanitiser bypass ever written.
 html5ever = "0.39"
 markup5ever_rcdom = "0.39"
+# CommonMark plus the GitHub extensions, as a pull parser: events in document
+# order are exactly what a node stack wants.
+pulldown-cmark = { version = "0.13", default-features = false, features = ["simd"] }
 regex = "1"
 unicode-segmentation = "1"
 

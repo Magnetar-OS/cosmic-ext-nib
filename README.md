@@ -94,15 +94,26 @@ opaque island. The two meet at the HTML serialiser, not in the layout engine.
 
 ## State
 
-`nib-model` is written and tested: schema and content-expression compiler, the
-node tree, marks, position resolution, slices, the replace algorithm, position
-mapping, the step set, and the structural edits (`split`, `join`, `lift`,
-`wrap`, `set_block_type`, `set_node_markup`, `clear_incompatible`, `add_mark`,
-`remove_mark`). 112 tests, no warnings under `clippy --all-targets`.
+Four of the five crates are written and tested, at 279 tests with no warnings
+under pedantic clippy.
 
-Still to come, in order: the slice fitter that paste needs; editor state,
-selections and plugins; history, commands, keymaps and input rules; the
-extension API; the HTML, Markdown and text serialisers; and the widget.
+**`nib-model`** — schema and content-expression compiler, the node tree, marks,
+position resolution, slices, the replace algorithm, the slice fitter, position
+mapping, the step set, structural edits, editor state, selections, plugins,
+history, commands, keymaps, input rules and decorations.
+
+**`nib-html`** — html5ever in, tags out, one rule table serving both.
+
+**`nib-markdown`** — CommonMark, GitHub's extensions, and components in both
+MDC (`::card{title="x"}`) and MDX (`<Card title="x" />`) spellings.
+
+**`nib-text`** — plain text out with wrapping and tables, plain text in, and
+the mail quoting rules: what a quote is, how deep it goes, and where a
+signature starts.
+
+Still to come: the widget. A block tree of `cosmic_text::Editor`s laid out by
+iced, with cross-block selection, a caret that blinks and moves smoothly, and
+syntax highlighting driven by the decoration layer.
 
 ## Building
 

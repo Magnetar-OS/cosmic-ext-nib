@@ -153,6 +153,14 @@ pub struct NodeSpec {
     /// table cell.
     pub isolating: bool,
     pub attrs: BTreeMap<String, AttrSpec>,
+    /// Whether attributes the spec did not declare are kept.
+    ///
+    /// Off by default, and that default is the schema doing its job: an
+    /// attribute nobody declared is one nothing downstream can rely on. It is
+    /// turned on for exactly one shape of node — a component whose props are
+    /// the author's, not the schema's, as MDC and MDX have — and that node
+    /// still declares the attributes it *requires*.
+    pub open_attrs: bool,
 }
 
 impl NodeSpec {
@@ -228,6 +236,13 @@ impl NodeSpec {
     #[must_use]
     pub fn attr(mut self, name: impl Into<String>, spec: AttrSpec) -> Self {
         self.attrs.insert(name.into(), spec);
+        self
+    }
+
+    /// Keeps attributes the spec did not declare. See [`NodeSpec::open_attrs`].
+    #[must_use]
+    pub fn open(mut self) -> Self {
+        self.open_attrs = true;
         self
     }
 }
@@ -451,7 +466,13 @@ impl NodeType {
                 .clone()
                 .ok_or_else(|| self.first_missing_attr(&Attrs::none()));
         };
-        let mut out = Attrs::none();
+        // An open type keeps what it was given and fills in the rest; a closed
+        // one keeps only what it declared.
+        let mut out = if self.spec.open_attrs {
+            given.clone()
+        } else {
+            Attrs::none()
+        };
         for (name, spec) in &self.spec.attrs {
             let value = given
                 .get(name)

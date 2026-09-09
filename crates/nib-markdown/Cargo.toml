@@ -1,0 +1,20 @@
+[package]
+name = "cosmic-ext-nib-markdown"
+description = "Markdown, MDC and MDX in and out of a Nib document"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+
+[lib]
+name = "nib_markdown"
+path = "src/lib.rs"
+
+[dependencies]
+nib-model.workspace = true
+pulldown-cmark = { workspace = true }
+
+[lints]
+workspace = true
