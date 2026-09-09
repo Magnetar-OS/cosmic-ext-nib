@@ -90,7 +90,7 @@ pub fn can_split(
     }
 
     let mut d = at.depth().wrapping_sub(1);
-    let mut i = depth as isize - 2;
+    let mut i = depth.cast_signed() - 2;
     while d > base && d != usize::MAX {
         let node = at.node(d);
         let index = at.index(d);
@@ -336,7 +336,7 @@ impl Transform {
         let mut before = Fragment::empty();
         let mut after = Fragment::empty();
         let mut d = at.depth();
-        let mut i = depth as isize - 1;
+        let mut i = depth.cast_signed() - 1;
         let end = at.depth().saturating_sub(depth);
         while d > end {
             before = Fragment::from(at.node(d).copy(before));
@@ -583,13 +583,13 @@ impl Transform {
         let mut steps: Vec<Step> = Vec::new();
         let mut cur = pos;
 
-        for child in node.content().iter() {
+        for child in node.content() {
             let end = cur + child.node_size();
             match matched.match_type(child.type_id()) {
                 None => steps.push(Step::replace(cur, end, Slice::empty())),
                 Some(next) => {
                     matched = next;
-                    for mark in child.marks().iter() {
+                    for mark in child.marks() {
                         if !parent.allows_mark_type(mark.typ().id()) {
                             steps.push(Step::RemoveMark {
                                 from: cur,
@@ -641,7 +641,7 @@ impl Transform {
             let end = (pos + node.node_size()).min(to);
             let new_set = mark.add_to_set(node.marks());
 
-            for existing in node.marks().iter() {
+            for existing in node.marks() {
                 if existing.is_in_set(&new_set) {
                     continue;
                 }
@@ -694,7 +694,7 @@ impl Transform {
             }
             let start = pos.max(from);
             let end = (pos + node.node_size()).min(to);
-            for mark in node.marks().iter() {
+            for mark in node.marks() {
                 if !which.matches(mark) {
                     continue;
                 }

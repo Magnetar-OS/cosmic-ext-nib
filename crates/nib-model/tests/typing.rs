@@ -57,7 +57,7 @@ fn hash_space_makes_a_heading() {
     let rules = input_rules::base(&schema());
     let state = state_at(one_paragraph("#"), 2);
     let state = type_text(&state, &rules, " ");
-    assert_eq!(state.doc().to_string(), r#"doc(heading[level=1])"#);
+    assert_eq!(state.doc().to_string(), r"doc(heading[level=1])");
 }
 
 #[test]
@@ -65,7 +65,7 @@ fn three_hashes_make_a_level_three_heading() {
     let rules = input_rules::base(&schema());
     let state = state_at(one_paragraph("###"), 4);
     let state = type_text(&state, &rules, " ");
-    assert_eq!(state.doc().to_string(), r#"doc(heading[level=3])"#);
+    assert_eq!(state.doc().to_string(), r"doc(heading[level=3])");
 }
 
 #[test]
@@ -75,7 +75,7 @@ fn a_dash_and_a_space_make_a_list() {
     let state = type_text(&state, &rules, " ");
     assert_eq!(
         state.doc().to_string(),
-        r#"doc(bullet_list(list_item(paragraph)))"#
+        r"doc(bullet_list(list_item(paragraph)))"
     );
     assert_eq!(state.doc().check(), Ok(()));
 }
@@ -85,7 +85,7 @@ fn a_greater_than_and_a_space_make_a_quote() {
     let rules = input_rules::base(&schema());
     let state = state_at(one_paragraph(">"), 2);
     let state = type_text(&state, &rules, " ");
-    assert_eq!(state.doc().to_string(), r#"doc(blockquote(paragraph))"#);
+    assert_eq!(state.doc().to_string(), r"doc(blockquote(paragraph))");
 }
 
 #[test]
@@ -95,7 +95,7 @@ fn backticks_make_a_code_block_with_its_language() {
     let state = type_text(&state, &rules, " ");
     assert_eq!(
         state.doc().to_string(),
-        r#"doc(code_block[language=rust])"#
+        r"doc(code_block[language=rust])"
     );
 }
 

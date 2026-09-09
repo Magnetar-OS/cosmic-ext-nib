@@ -119,7 +119,7 @@ fn enter_at_the_end_of_a_heading_starts_a_paragraph() {
     let b = b();
     let doc = b.doc(nodes![b.attr_node(
         nodes::HEADING,
-        attrs! { "level" => 2_i64 },
+        &attrs! { "level" => 2_i64 },
         nodes![b.text("Title")]
     )]);
     let state = state_at(doc, 6);
@@ -330,7 +330,7 @@ fn typing_in_quick_succession_is_one_undo() {
     );
 
     let undone = run(&state, &cmd::undo());
-    assert_eq!(undone.doc().to_string(), r#"doc(paragraph)"#);
+    assert_eq!(undone.doc().to_string(), r"doc(paragraph)");
 }
 
 #[test]

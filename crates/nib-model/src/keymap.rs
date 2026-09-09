@@ -101,7 +101,7 @@ impl std::fmt::Debug for Keymap {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Keymap")
             .field("bindings", &self.bindings.keys().collect::<Vec<_>>())
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 

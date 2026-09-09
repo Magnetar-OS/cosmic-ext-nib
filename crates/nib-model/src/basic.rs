@@ -89,6 +89,7 @@ pub fn schema() -> Schema {
     SCHEMA.get_or_init(build).clone()
 }
 
+#[allow(clippy::too_many_lines)]
 fn build() -> Schema {
     Schema::builder()
         .node(nodes::DOC, NodeSpec::new().content("block+"))

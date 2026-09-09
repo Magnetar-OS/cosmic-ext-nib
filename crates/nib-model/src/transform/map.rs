@@ -32,6 +32,26 @@
 //! position can be put back exactly where it started rather than at the edge of
 //! the hole. That is why [`Mapping`] tracks mirrors at all.
 
+/// A position plus a signed difference, clamped at zero.
+///
+/// Positions are `usize` and the differences between them are signed, so the
+/// two have to meet somewhere. They meet here rather than at twenty `as`
+/// casts: a document position is bounded by the document's size in memory and
+/// so cannot approach `isize::MAX`, and saying that once in one place is worth
+/// more than asserting it silently everywhere.
+fn shift(pos: usize, diff: isize) -> usize {
+    if diff >= 0 {
+        pos.saturating_add(diff.unsigned_abs())
+    } else {
+        pos.saturating_sub(diff.unsigned_abs())
+    }
+}
+
+/// How much a range's size changed, as a signed difference.
+fn delta(new: usize, old: usize) -> isize {
+    isize::try_from(new).unwrap_or(isize::MAX) - isize::try_from(old).unwrap_or(isize::MAX)
+}
+
 /// A range that a step replaced: where it started, how long it was, and how
 /// long it became.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -176,11 +196,10 @@ impl StepMap {
         let mut diff: isize = 0;
         if !self.inverted {
             for range in &self.ranges[..recover.index] {
-                diff += range.new_size as isize - range.old_size as isize;
+                diff += delta(range.new_size, range.old_size);
             }
         }
-        let start = self.ranges[recover.index].start;
-        usize::try_from(start as isize + diff).unwrap_or(0) + recover.offset
+        shift(self.ranges[recover.index].start, diff) + recover.offset
     }
 
     /// Calls `f` for each replaced range, with its old and new bounds.
@@ -195,12 +214,10 @@ impl StepMap {
             } else {
                 (range.old_size, range.new_size)
             };
-            let start = usize::try_from(range.start as isize - if self.inverted { diff } else { 0 })
-                .unwrap_or(0);
-            let new_start = usize::try_from(range.start as isize + if self.inverted { 0 } else { diff })
-                .unwrap_or(0);
+            let start = shift(range.start, if self.inverted { -diff } else { 0 });
+            let new_start = shift(range.start, if self.inverted { 0 } else { diff });
             f(start, start + old_size, new_start, new_start + new_size);
-            diff += new_size as isize - old_size as isize;
+            diff += delta(new_size, old_size);
         }
     }
 
@@ -221,7 +238,7 @@ impl StepMap {
                 (range.old_size, range.new_size)
             };
             let start = if self.inverted {
-                usize::try_from(range.start as isize - diff).unwrap_or(0)
+                shift(range.start, -diff)
             } else {
                 range.start
             };
@@ -242,8 +259,7 @@ impl StepMap {
                 } else {
                     assoc
                 };
-                let mapped = usize::try_from(start as isize + diff).unwrap_or(0)
-                    + if side < 0 { 0 } else { new_size };
+                let mapped = shift(start, diff) + if side < 0 { 0 } else { new_size };
                 let anchor = if assoc < 0 { start } else { end };
                 let recover = if pos == anchor {
                     None
@@ -270,10 +286,10 @@ impl StepMap {
                     recover,
                 };
             }
-            diff += new_size as isize - old_size as isize;
+            diff += delta(new_size, old_size);
         }
         MapResult {
-            pos: usize::try_from(pos as isize + diff).unwrap_or(0),
+            pos: shift(pos, diff),
             del: 0,
             recover: None,
         }

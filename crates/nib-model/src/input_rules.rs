@@ -74,7 +74,7 @@ impl std::fmt::Debug for InputRule {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("InputRule")
             .field("pattern", &self.pattern.as_str())
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 

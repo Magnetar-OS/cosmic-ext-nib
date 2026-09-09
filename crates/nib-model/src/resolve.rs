@@ -288,7 +288,7 @@ impl ResolvedPos {
         };
 
         let mut marks = main.marks().clone();
-        for mark in main.marks().iter() {
+        for mark in main.marks() {
             let inclusive = mark.typ().is_inclusive();
             let continues = other.is_some_and(|o| mark.is_in_set(o.marks()));
             if !inclusive && !continues {
@@ -308,7 +308,7 @@ impl ResolvedPos {
         }
         let next = end.parent().child(end.index(end.depth()));
         let mut marks = after.marks().clone();
-        for mark in after.marks().iter() {
+        for mark in after.marks() {
             let inclusive = mark.typ().is_inclusive();
             let continues = next.is_some_and(|n| mark.is_in_set(n.marks()));
             if !inclusive && !continues {

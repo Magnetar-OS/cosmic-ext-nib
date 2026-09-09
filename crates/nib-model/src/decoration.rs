@@ -192,30 +192,27 @@ impl Decoration {
     /// to, or `None` when what it described is gone.
     #[must_use]
     pub fn map(&self, mapping: &Mapping) -> Option<Self> {
-        match &self.kind {
-            Kind::Widget { side, .. } => {
-                let result = mapping.map_result(self.from, if *side < 0 { -1 } else { 1 });
-                (!result.deleted()).then(|| Self {
-                    from: result.pos(),
-                    to: result.pos(),
-                    kind: self.kind.clone(),
-                })
+        if let Kind::Widget { side, .. } = &self.kind {
+            let result = mapping.map_result(self.from, if *side < 0 { -1 } else { 1 });
+            (!result.deleted()).then(|| Self {
+                from: result.pos(),
+                to: result.pos(),
+                kind: self.kind.clone(),
+            })
+        } else {
+            let from = mapping.map_result(self.from, 1);
+            let to = mapping.map_result(self.to, -1);
+            // A range whose content was removed has nothing left to
+            // describe; a range that merely shrank is kept.
+            if from.deleted_across() && to.deleted_across() {
+                return None;
             }
-            _ => {
-                let from = mapping.map_result(self.from, 1);
-                let to = mapping.map_result(self.to, -1);
-                // A range whose content was removed has nothing left to
-                // describe; a range that merely shrank is kept.
-                if from.deleted_across() && to.deleted_across() {
-                    return None;
-                }
-                let (from, to) = (from.pos(), to.pos());
-                (from < to || matches!(self.kind, Kind::Node(_))).then(|| Self {
-                    from,
-                    to: to.max(from),
-                    kind: self.kind.clone(),
-                })
-            }
+            let (from, to) = (from.pos(), to.pos());
+            (from < to || matches!(self.kind, Kind::Node(_))).then(|| Self {
+                from,
+                to: to.max(from),
+                kind: self.kind.clone(),
+            })
         }
     }
 }
@@ -224,7 +221,7 @@ impl Decoration {
 ///
 /// Kept sorted by start position, so [`DecorationSet::in_range`] can find what
 /// overlaps a block without scanning the lot. Flat rather than tree-shaped:
-/// ProseMirror's `DecorationSet` mirrors the document tree to keep mapping
+/// `ProseMirror`'s `DecorationSet` mirrors the document tree to keep mapping
 /// cheap on very large documents, and that is an optimisation to make when a
 /// profile asks for it, not before.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

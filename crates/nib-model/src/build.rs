@@ -58,7 +58,7 @@ macro_rules! nodes {
     () => { ::std::vec::Vec::<$crate::node::Node>::new() };
     ($($item:expr),+ $(,)?) => {{
         let mut out = ::std::vec::Vec::new();
-        $($crate::build::IntoNodes::into_nodes($item).into_iter().for_each(|n| out.push(n));)+
+        $(out.extend($crate::build::IntoNodes::into_nodes($item));)+
         out
     }};
 }
@@ -94,7 +94,7 @@ impl Builder {
     /// or if the content is not valid for the type.
     #[must_use]
     pub fn node(&self, name: &str, content: impl IntoNodes) -> Node {
-        self.attr_node(name, Attrs::none(), content)
+        self.attr_node(name, &Attrs::none(), content)
     }
 
     /// A node of the named type, with attributes.
@@ -104,12 +104,12 @@ impl Builder {
     /// If the schema has no such type, if a required attribute is missing, or
     /// if the content is not valid for the type.
     #[must_use]
-    pub fn attr_node(&self, name: &str, attrs: Attrs, content: impl IntoNodes) -> Node {
+    pub fn attr_node(&self, name: &str, attrs: &Attrs, content: impl IntoNodes) -> Node {
         let id = self
             .schema
             .node_id(name)
             .unwrap_or_else(|| panic!("no node type named {name:?} in this schema"));
-        let attrs = if attrs.is_empty() { None } else { Some(&attrs) };
+        let attrs = if attrs.is_empty() { None } else { Some(attrs) };
         self.schema
             .create_checked(
                 id,
@@ -145,10 +145,10 @@ impl Builder {
     ///
     /// If the schema has no such mark, or a required attribute is missing.
     #[must_use]
-    pub fn mark(&self, name: &str, attrs: Option<Attrs>, content: impl IntoNodes) -> Vec<Node> {
+    pub fn mark(&self, name: &str, attrs: Option<&Attrs>, content: impl IntoNodes) -> Vec<Node> {
         let mark = self
             .schema
-            .mark(name, attrs.as_ref())
+            .mark(name, attrs)
             .unwrap_or_else(|e| panic!("building mark {name:?}: {e}"));
         content
             .into_nodes()

@@ -100,7 +100,7 @@ impl std::fmt::Debug for Plugin {
             .field("has_state", &self.state.is_some())
             .field("filters", &self.filter.is_some())
             .field("appends", &self.append.is_some())
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 

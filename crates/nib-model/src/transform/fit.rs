@@ -36,7 +36,7 @@
 //! of the gap, and the whole thing becomes one `Replace` — or, when inline
 //! content on both sides has to be pulled together, one `ReplaceAround`.
 //!
-//! This is a port of ProseMirror's `Fitter`. It is the single most intricate
+//! This is a port of `ProseMirror`'s `Fitter`. It is the single most intricate
 //! piece of the engine, and it is intricate because "paste this here" is a
 //! genuinely underdetermined request that a schema is the only thing able to
 //! answer.
@@ -54,16 +54,22 @@ use crate::transform::step::Step;
 /// The step that replaces `from..to` with `slice`, fitting the slice to the
 /// gap, or `None` when nothing can be made to fit.
 #[must_use]
-pub fn replace_step(schema: &Schema, doc: &Node, from: usize, to: usize, slice: &Slice) -> Option<Step> {
+pub fn replace_step(
+    schema: &Schema,
+    doc: &Node,
+    from: usize,
+    to: usize,
+    slice: Slice,
+) -> Option<Step> {
     if from == to && slice.is_empty() {
         return None;
     }
     let r_from = doc.resolve(from);
     let r_to = doc.resolve(to);
-    if fits_trivially(&r_from, &r_to, slice) {
-        return Some(Step::replace(from, to, slice.clone()));
+    if fits_trivially(&r_from, &r_to, &slice) {
+        return Some(Step::replace(from, to, slice));
     }
-    Fitter::new(schema, r_from, r_to, slice.clone()).fit()
+    Fitter::new(schema, r_from, r_to, slice).fit()
 }
 
 /// True when the slice can go straight in with no rearrangement.
@@ -338,12 +344,12 @@ impl<'a> Fitter<'a> {
             }
         }
 
-        let slice = self.unplaced.clone();
+        let unplaced = self.unplaced.clone();
         let fragment = fit
             .parent
             .as_ref()
-            .map_or_else(|| slice.content().clone(), |p| p.content().clone());
-        let open_start = slice.open_start().saturating_sub(fit.slice_depth);
+            .map_or_else(|| unplaced.content().clone(), |p| p.content().clone());
+        let open_start = unplaced.open_start().saturating_sub(fit.slice_depth);
 
         let mut taken = 0;
         let mut add: Vec<Node> = Vec::new();
@@ -354,7 +360,7 @@ impl<'a> Fitter<'a> {
         let frontier_type = self.schema.node_type(frontier_type).clone();
 
         if let Some(inject) = &fit.inject {
-            for child in inject.iter() {
+            for child in inject {
                 add.push(child.clone());
             }
             if let Some(next) = matched.match_fragment(inject) {
@@ -364,21 +370,21 @@ impl<'a> Fitter<'a> {
 
         // How many nodes at the end of `fragment` stay open. Zero means the
         // parent is open but nothing below it; negative means nothing is.
-        let mut open_end_count = (fragment.size() + fit.slice_depth) as isize
-            - (slice.content().size() - slice.open_end()) as isize;
+        let mut open_end_count = (fragment.size() + fit.slice_depth).cast_signed()
+            - (unplaced.content().size() - unplaced.open_end()).cast_signed();
 
         while taken < fragment.child_count() {
             let Some(next) = fragment.child(taken) else {
                 break;
             };
-            let Some(matches) = matched.match_type(next.type_id()) else {
+            let Some(advanced) = matched.match_type(next.type_id()) else {
                 break;
             };
             taken += 1;
             // Drop an open node that turned out to be empty — the tail of a
             // paragraph the user's selection only clipped.
             if taken > 1 || open_start == 0 || next.content_size() > 0 {
-                matched = matches;
+                matched = advanced;
                 let marked = next.with_marks(frontier_type.allowed_marks(next.marks()));
                 let node = close_node_start(
                     self.schema,
@@ -429,18 +435,18 @@ impl<'a> Fitter<'a> {
 
         self.unplaced = if !to_end {
             Slice::new(
-                drop_from_fragment(slice.content(), fit.slice_depth, taken),
-                slice.open_start(),
-                slice.open_end(),
+                drop_from_fragment(unplaced.content(), fit.slice_depth, taken),
+                unplaced.open_start(),
+                unplaced.open_end(),
             )
         } else if fit.slice_depth == 0 {
             Slice::empty()
         } else {
             Slice::new(
-                drop_from_fragment(slice.content(), fit.slice_depth - 1, 1),
+                drop_from_fragment(unplaced.content(), fit.slice_depth - 1, 1),
                 fit.slice_depth - 1,
                 if open_end_count < 0 {
-                    slice.open_end()
+                    unplaced.open_end()
                 } else {
                     fit.slice_depth - 1
                 },
@@ -531,19 +537,19 @@ impl<'a> Fitter<'a> {
                 .content_match()
                 .fill_before(self.schema, node.content(), true, to.index(d))
                 .unwrap_or_else(Fragment::empty);
-            self.open_frontier_node(node.type_id(), Some(node.attrs().clone()), add);
+            self.open_frontier_node(node.type_id(), Some(node.attrs()), add);
         }
         Some(to)
     }
 
-    fn open_frontier_node(&mut self, typ: NodeTypeId, attrs: Option<Attrs>, content: Fragment) {
+    fn open_frontier_node(&mut self, typ: NodeTypeId, attrs: Option<&Attrs>, content: Fragment) {
         let depth = self.depth();
         if let Some(next) = self.frontier[depth].1.match_type(typ) {
             self.frontier[depth].1 = next;
         }
         let node = self
             .schema
-            .create(typ, attrs.as_ref(), content, Marks::none())
+            .create(typ, attrs, content, Marks::none())
             .expect("the frontier only opens types the content match offered");
         self.placed = add_to_fragment(&self.placed, depth, &Fragment::from(node));
         self.frontier

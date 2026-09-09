@@ -61,6 +61,10 @@ impl Mark {
 
     /// A copy with one attribute changed — how "edit this link's target"
     /// works.
+    ///
+    /// # Panics
+    ///
+    /// Never for a well-formed mark; the attribute map is already owned.
     #[must_use]
     pub fn with_attr(&self, name: &str, value: impl Into<crate::attrs::Value>) -> Self {
         Self {
@@ -74,6 +78,10 @@ impl Mark {
     /// Follows the three schema properties: a mark that excludes a member
     /// replaces it, a mark excluded by a member is refused (the set comes back
     /// unchanged), and what survives is inserted in rank order.
+    ///
+    /// # Panics
+    ///
+    /// Never: the copy it builds is always non-empty by the time it is read.
     #[must_use]
     pub fn add_to_set(&self, set: &Marks) -> Marks {
         let existing = set.as_slice();

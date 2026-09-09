@@ -26,7 +26,7 @@ use crate::schema::Schema;
 /// up.
 ///
 /// Plugins that respond to each other's transactions can in principle ping-pong
-/// forever. ProseMirror relies on them not doing so; a bound turns a hang into
+/// forever. `ProseMirror` relies on them not doing so; a bound turns a hang into
 /// a visible, debuggable stop.
 const MAX_APPEND_ROUNDS: usize = 32;
 
@@ -49,7 +49,7 @@ impl std::fmt::Debug for EditorState {
             .field("selection", &self.selection)
             .field("stored_marks", &self.stored_marks)
             .field("plugins", &self.plugins.len())
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 

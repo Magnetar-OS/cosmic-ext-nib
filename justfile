@@ -10,12 +10,17 @@ build-debug *args:
 
 build-release *args: (build-debug '--release' args)
 
-# Pedantic as warnings, not denials — the ecosystem standard.
+# Pedantic is declared in Cargo.toml, so it applies here and in the editor
+# alike; this only adds the targets the plain build leaves out.
 check *args:
-    cargo clippy --workspace --all-targets --locked {{args}} -- -W clippy::pedantic
+    cargo clippy --workspace --all-targets --locked {{args}}
 
 test *args:
     cargo test --workspace --locked {{args}}
 
 fmt:
     cargo +nightly fmt --all
+
+# What CI runs, in the order CI runs it.
+ci: && check test
+    cargo fmt --all --check

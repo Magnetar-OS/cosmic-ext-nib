@@ -65,7 +65,7 @@ impl std::fmt::Debug for Transaction {
             .field("selection", &self.selection)
             .field("stored_marks", &self.stored_marks)
             .field("meta", &self.meta.keys().collect::<Vec<_>>())
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 

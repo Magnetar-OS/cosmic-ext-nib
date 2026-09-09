@@ -211,7 +211,7 @@ fn parse_seq(
     loop {
         exprs.push(parse_subscript(stream, types, groups)?);
         match stream.peek() {
-            None | Some(")") | Some("|") => break,
+            None | Some(")" | "|") => break,
             Some(_) => {}
         }
     }
@@ -413,8 +413,7 @@ impl Nfa {
                     let body = self.compile(expr, cur);
                     self.connect(&body, cur);
                 } else {
-                    #[allow(clippy::cast_sign_loss)]
-                    let max = *max as u32;
+                    let max = u32::try_from(*max).unwrap_or(*min);
                     for _ in *min..max {
                         let next = self.node();
                         let skip = self.edge(cur, None);
@@ -580,12 +579,9 @@ fn subset_construct(nfa: &Nfa, accept: usize) -> Vec<DfaState> {
         for &node in &set {
             for edge in &nfa.nodes[node] {
                 let Some(term) = edge.term else { continue };
-                let slot = match out.iter_mut().find(|(t, _)| *t == term) {
-                    Some((_, slot)) => slot,
-                    None => {
-                        out.push((term, Vec::new()));
-                        &mut out.last_mut().expect("just pushed").1
-                    }
+                let slot = if let Some((_, slot)) = out.iter_mut().find(|(t, _)| *t == term) { slot } else {
+                    out.push((term, Vec::new()));
+                    &mut out.last_mut().expect("just pushed").1
                 };
                 for reached in nfa.null_from(edge.to) {
                     if !slot.contains(&reached) {
@@ -874,6 +870,10 @@ pub fn fits(schema: &Schema, typ: NodeTypeId, fragment: &Fragment) -> bool {
 }
 
 /// A single node, wrapped in `wrapping` outermost-first.
+///
+/// # Panics
+///
+/// Never: wrapping a node always leaves exactly one node.
 ///
 /// # Errors
 ///

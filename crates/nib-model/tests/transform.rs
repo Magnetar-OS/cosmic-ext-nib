@@ -94,7 +94,7 @@ fn an_attribute_step_inverts_to_the_old_value() {
     let b = b();
     let doc = b.doc(nodes![b.attr_node(
         nodes::HEADING,
-        attrs! { "level" => 1_i64 },
+        &attrs! { "level" => 1_i64 },
         nodes![b.text("Title")]
     )]);
     let after = round_trips(

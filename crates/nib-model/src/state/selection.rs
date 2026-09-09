@@ -283,10 +283,10 @@ impl Selection {
         let moved = Self::find_from(doc, &r_anchor, -bias, true)
             .or_else(|| Self::find_from(doc, &r_anchor, bias, true))
             .map_or(head, |s| s.anchor);
-        if (moved < head) != (anchor < head) {
-            Self::text(head, head)
-        } else {
+        if (moved < head) == (anchor < head) {
             Self::text(moved, head)
+        } else {
+            Self::text(head, head)
         }
     }
 }
@@ -306,16 +306,16 @@ fn find_selection_in(
     }
     let mut pos = pos;
     let mut i = if dir > 0 {
-        index as isize
+        index.cast_signed()
     } else {
-        index as isize - 1
+        index.cast_signed() - 1
     };
     while if dir > 0 {
-        (i as usize) < node.child_count()
+        i.cast_unsigned() < node.child_count()
     } else {
         i >= 0
     } {
-        let child = node.child(i as usize)?;
+        let child = node.child(i.cast_unsigned())?;
         if child.is_atom() {
             if !text_only && child.typ().spec().selectable {
                 let at = if dir < 0 { pos - child.node_size() } else { pos };
@@ -338,7 +338,7 @@ fn find_selection_in(
         } else {
             pos - child.node_size()
         };
-        i += dir as isize;
+        i += isize::try_from(dir).unwrap_or(0);
     }
     None
 }

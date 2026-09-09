@@ -234,7 +234,7 @@ fn replacing_a_selection_with_a_block_removes_and_inserts_at_once() {
     let doc = two_paragraphs();
     let heading = b.attr_node(
         nodes::HEADING,
-        attrs! { "level" => 2_i64 },
+        &attrs! { "level" => 2_i64 },
         nodes![b.text("Title")],
     );
     let slice = Slice::new(Fragment::from(heading), 0, 0);

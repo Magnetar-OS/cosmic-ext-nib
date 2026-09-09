@@ -121,6 +121,11 @@ pub enum Whitespace {
 }
 
 /// The declaration of a node type.
+///
+/// A pile of booleans, and deliberately so: each is an independent property
+/// the schema author sets or does not, and folding them into enums would
+/// invent relationships between them that do not exist.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Default)]
 pub struct NodeSpec {
     /// The content expression. Absent means the node is a leaf.
@@ -526,6 +531,11 @@ impl MarkType {
     }
 
     /// True when a mark of this type cannot coexist with one of `other`.
+    ///
+    /// # Panics
+    ///
+    /// If the schema is still being built. A `MarkType` only escapes
+    /// [`SchemaBuilder::build`] once its exclusions are resolved.
     #[must_use]
     pub fn excludes(&self, other: MarkTypeId) -> bool {
         self.excluded
@@ -627,8 +637,8 @@ impl Schema {
     ///
     /// # Panics
     ///
-    /// Never for well-formed input; the text type is guaranteed by
-    /// [`SchemaBuilder::build`].
+    /// Never: [`SchemaBuilder::build`] refuses a schema with no text type, so
+    /// by the time a `Schema` exists there is one.
     #[must_use]
     pub fn text(&self, text: impl Into<Arc<str>>, marks: Marks) -> Node {
         Node::new_text(Arc::clone(self.node_type(self.inner.text)), text, marks)
@@ -851,6 +861,7 @@ impl SchemaBuilder {
     /// If a name is declared twice, a content expression names something that
     /// does not exist or cannot be compiled, or the schema lacks a usable
     /// `text` node type.
+    #[allow(clippy::too_many_lines)]
     pub fn build(self) -> Result<Schema, SchemaError> {
         // -- pass one: the types themselves --------------------------------
         let mut node_by_name = BTreeMap::new();
@@ -1042,9 +1053,9 @@ fn resolve_mark_set(
         Some(e) if !e.trim().is_empty() => Ok(Some(gather_marks(e, by_name, marks)?)),
         // An explicit empty string means no marks; so does a node whose
         // content is not inline, since there is nothing there to mark.
+        Some(_) | None if !inline_content => Ok(Some(Vec::new())),
         Some(_) => Ok(Some(Vec::new())),
-        None if inline_content => Ok(None),
-        None => Ok(Some(Vec::new())),
+        None => Ok(None),
     }
 }
 

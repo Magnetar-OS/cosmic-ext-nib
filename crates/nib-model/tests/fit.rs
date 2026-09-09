@@ -192,7 +192,7 @@ fn pasting_a_heading_over_an_empty_paragraph_replaces_it() {
     let doc = b.doc(nodes![b.node(nodes::PARAGRAPH, nodes![])]);
     let source = b.doc(nodes![b.attr_node(
         nodes::HEADING,
-        attrs! { "level" => 2_i64 },
+        &attrs! { "level" => 2_i64 },
         nodes![b.text("Title")]
     )]);
     let mut tr = tr(doc);
@@ -298,7 +298,7 @@ fn every_fitted_paste_leaves_a_valid_document() {
     // boundary of another, must produce something the schema accepts.
     let b = b();
     let source = b.doc(nodes![
-        b.attr_node(nodes::HEADING, attrs! { "level" => 1_i64 }, nodes![b.text("H")]),
+        b.attr_node(nodes::HEADING, &attrs! { "level" => 1_i64 }, nodes![b.text("H")]),
         b.node(nodes::PARAGRAPH, nodes![b.text("para")]),
         b.node(
             nodes::BULLET_LIST,

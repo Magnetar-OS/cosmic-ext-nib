@@ -16,7 +16,7 @@
 //!
 //! # Why a transaction, not a boolean plus a callback
 //!
-//! ProseMirror's commands take a `dispatch` and return whether they applied,
+//! `ProseMirror`'s commands take a `dispatch` and return whether they applied,
 //! so a caller can ask without doing. Returning `Option<Transaction>` says the
 //! same thing in one value: `is_some()` is "would apply", and the transaction
 //! is there when you want it. The cost is building a transaction that may be
@@ -191,7 +191,7 @@ pub fn join_backward() -> Command {
                     state.doc(),
                     at.before(depth),
                     at.after(depth),
-                    &Slice::empty(),
+                    Slice::empty(),
                 );
                 if let Some(step @ Step::Replace { from, to, .. }) = step.as_ref()
                     && let Step::Replace { slice, .. } = step
@@ -281,6 +281,7 @@ pub fn select_node_forward() -> Command {
 /// second's text into the first. Which one fires is what makes Backspace at
 /// the start of a list item behave like the user expects rather than like the
 /// tree does.
+#[allow(clippy::too_many_lines)]
 fn delete_barrier(state: &EditorState, cut: &ResolvedPos, dir: i32) -> Option<Transaction> {
     let before = cut.node_before()?;
     let after = cut.node_after()?;
@@ -649,6 +650,10 @@ pub fn select_parent_node() -> Command {
 // ---------------------------------------------------------------------------
 
 /// Turns a mark on where it is off and off where it is on.
+///
+/// # Panics
+///
+/// Never: the mark it looks up is one it has just found in the set.
 ///
 /// On a collapsed selection it changes the *pending* marks rather than the
 /// document, so pressing Ctrl+B and then typing produces bold text — the

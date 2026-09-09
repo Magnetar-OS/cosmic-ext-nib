@@ -505,19 +505,18 @@ impl Node {
                     .join(", ")
             ));
         }
-        for mark in self.marks.iter() {
-            if !self.typ.allows_mark_type(mark.typ().id()) {
-                return Err(format!(
-                    "mark {} is not allowed on node {}",
-                    mark.name(),
-                    self.typ.name()
-                ));
-            }
-        }
-        for child in self.content.iter() {
+        // A node's own marks are checked by its *parent*, below: a type's
+        // mark set says what its children may carry, and a text node declares
+        // no set at all.
+        for child in &self.content {
             if !self.typ.allows_marks(child.marks()) {
+                let offender = child
+                    .marks()
+                    .iter()
+                    .find(|m| !self.typ.allows_mark_type(m.typ().id()))
+                    .map_or("?", crate::mark::Mark::name);
                 return Err(format!(
-                    "child of {} carries a mark the parent forbids",
+                    "mark {offender} is not allowed inside {}",
                     self.typ.name()
                 ));
             }
@@ -556,11 +555,11 @@ impl fmt::Display for Node {
     /// `doc(paragraph("hi", em("there")))`.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(text) = &self.text {
-            for mark in self.marks.iter() {
+            for mark in &self.marks {
                 write!(f, "{}(", mark.name())?;
             }
             write!(f, "{text:?}")?;
-            for _ in self.marks.iter() {
+            for _ in &self.marks {
                 f.write_str(")")?;
             }
             return Ok(());

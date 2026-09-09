@@ -10,7 +10,7 @@
 //! on a server to convert a document with no display attached, and kept when
 //! the view layer is replaced.
 //!
-//! The design is ProseMirror's, because ProseMirror got the hard parts right
+//! The design is `ProseMirror`'s, because `ProseMirror` got the hard parts right
 //! and there is no Rust prior art to fork. What follows is a port of its
 //! ideas, not its code.
 //!
@@ -31,7 +31,7 @@
 //!
 //! # Two decisions worth stating up front
 //!
-//! **Positions are UTF-8 byte offsets.** ProseMirror counts UTF-16 code units
+//! **Positions are UTF-8 byte offsets.** `ProseMirror` counts UTF-16 code units
 //! because it lives in a browser. Counting bytes instead means a text node's
 //! size is `str::len()`, a cut is a `&str` slice, and the offsets handed to
 //! the shaper need no conversion — `cosmic_text` also works in bytes. The cost

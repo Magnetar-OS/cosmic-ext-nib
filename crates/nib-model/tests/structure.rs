@@ -52,7 +52,7 @@ fn splitting_can_name_what_the_second_half_becomes() {
     let b = b();
     let doc = b.doc(nodes![b.attr_node(
         nodes::HEADING,
-        attrs! { "level" => 2_i64 },
+        &attrs! { "level" => 2_i64 },
         nodes![b.text("Title")]
     )]);
     let after = [Some(TypeAndAttrs::new(id(nodes::PARAGRAPH)))];
@@ -339,7 +339,7 @@ fn removing_by_type_takes_the_link_off_without_knowing_its_target() {
         nodes::PARAGRAPH,
         nodes![b.mark(
             marks::LINK,
-            Some(attrs! { "href" => "http://example.test" }),
+            Some(&attrs! { "href" => "http://example.test" }),
             nodes![b.text("here")]
         )]
     )]);

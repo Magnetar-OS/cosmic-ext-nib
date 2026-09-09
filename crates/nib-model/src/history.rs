@@ -218,16 +218,13 @@ impl Branch {
                 }
                 Some(step) => {
                     let step = if remapping {
-                        match step.map(&remap) {
-                            Some(mapped) => mapped,
-                            None => {
-                                if item.selection.is_some() {
-                                    selection = item.selection.clone();
-                                    cut = i;
-                                    break;
-                                }
-                                continue;
+                        if let Some(mapped) = step.map(&remap) { mapped } else {
+                            if item.selection.is_some() {
+                                selection.clone_from(&item.selection);
+                                cut = i;
+                                break;
                             }
+                            continue;
                         }
                     } else {
                         step.clone()
@@ -236,7 +233,7 @@ impl Branch {
                 }
             }
             if item.selection.is_some() {
-                selection = item.selection.clone();
+                selection.clone_from(&item.selection);
                 cut = i;
                 break;
             }

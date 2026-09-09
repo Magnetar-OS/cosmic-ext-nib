@@ -4,14 +4,14 @@
 //!
 //! # Why a closed set
 //!
-//! ProseMirror lets applications define their own step types. This does not,
+//! `ProseMirror` lets applications define their own step types. This does not,
 //! and the reason is serialisation and rebasing: every peer in a collaborative
 //! session, and every reader of a stored history, must be able to apply and
 //! invert every step it receives. A step type only one client knows is a step
 //! the others must refuse, and a refusal in the middle of a rebase is not
 //! recoverable.
 //!
-//! The set below is closed and complete for the same reason ProseMirror's core
+//! The set below is closed and complete for the same reason `ProseMirror`'s core
 //! set is: [`Step::ReplaceAround`] can express any structural change — wrap,
 //! lift, split, join, change a block's type — as one atomic, invertible
 //! operation. An extension that wants a new *edit* writes a command that emits
@@ -187,7 +187,7 @@ impl Step {
                 Ok(replace_node_shell(
                     doc,
                     *pos,
-                    node.with_marks(mark.add_to_set(node.marks())),
+                    &node.with_marks(mark.add_to_set(node.marks())),
                 )?)
             }
             Self::RemoveNodeMark { pos, mark } => {
@@ -195,7 +195,7 @@ impl Step {
                 Ok(replace_node_shell(
                     doc,
                     *pos,
-                    node.with_marks(mark.remove_from_set(node.marks())),
+                    &node.with_marks(mark.remove_from_set(node.marks())),
                 )?)
             }
 
@@ -204,7 +204,7 @@ impl Step {
                 Ok(replace_node_shell(
                     doc,
                     *pos,
-                    node.with_attrs(node.attrs().set(Arc::clone(attr), value.clone())),
+                    &node.with_attrs(node.attrs().set(Arc::clone(attr), value.clone())),
                 )?)
             }
             Self::SetDocAttr { attr, value } => {
@@ -500,7 +500,7 @@ impl Step {
 /// its subtree: replace the single position the node's opening occupies with a
 /// new, empty node whose right edge is open, and the original content flows
 /// back in.
-fn replace_node_shell(doc: &Node, pos: usize, updated: Node) -> Result<Node, ReplaceError> {
+fn replace_node_shell(doc: &Node, pos: usize, updated: &Node) -> Result<Node, ReplaceError> {
     let open_end = usize::from(!updated.is_leaf());
     let shell = Node::new(
         Arc::clone(updated.typ()),
@@ -542,7 +542,7 @@ fn map_fragment(
     f: &mut dyn FnMut(&Node, &Node) -> Node,
 ) -> Fragment {
     let mut mapped = Vec::with_capacity(fragment.child_count());
-    for child in fragment.iter() {
+    for child in fragment {
         let child = if child.content_size() > 0 {
             let inner = map_fragment(child.content(), child, f);
             child.copy(inner)

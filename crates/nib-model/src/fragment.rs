@@ -123,6 +123,11 @@ impl Fragment {
     /// `find_diff_start` report a difference where the reader sees none — so
     /// the view would redraw a paragraph because a transaction happened to
     /// break a string in a new place.
+    ///
+    /// # Panics
+    ///
+    /// If the two fragments are not from the same schema, so the merged text
+    /// node's markup cannot be compared.
     #[must_use]
     pub fn append(&self, other: &Self) -> Self {
         if other.is_empty() {
@@ -215,6 +220,10 @@ impl Fragment {
 
     /// Adds a node at the front, merging with the first child when both are
     /// text with the same markup.
+    ///
+    /// # Panics
+    ///
+    /// If a text offset falls inside a character.
     #[must_use]
     pub fn add_to_start(&self, node: Node) -> Self {
         Self::from(node).append(self)
@@ -222,6 +231,10 @@ impl Fragment {
 
     /// Adds a node at the end, merging with the last child when both are text
     /// with the same markup.
+    ///
+    /// # Panics
+    ///
+    /// If a text offset falls inside a character.
     #[must_use]
     pub fn add_to_end(&self, node: Node) -> Self {
         self.append(&Self::from(node))
@@ -394,6 +407,10 @@ impl Fragment {
     /// The last position at which `self` and `other` differ, as a pair of
     /// positions — one in each fragment, because after the difference the two
     /// sides are at different offsets.
+    ///
+    /// # Panics
+    ///
+    /// If either position is out of range for its fragment.
     #[must_use]
     pub fn find_diff_end(
         &self,

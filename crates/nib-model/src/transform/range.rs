@@ -76,7 +76,7 @@ impl Transform {
         slice: Slice,
     ) -> Result<&mut Self, StepError> {
         let schema = self.schema().clone();
-        if let Some(step) = replace_step(&schema, self.doc(), from, to, &slice) {
+        if let Some(step) = replace_step(&schema, self.doc(), from, to, slice) {
             self.step(step)?;
         }
         Ok(self)
@@ -141,9 +141,14 @@ impl Transform {
     /// Replaces `from..to` with `slice`, widening the range where the slice's
     /// content would rather replace a node than sit inside it.
     ///
+    /// Takes the slice by value for consistency with the other replacements,
+    /// even though it is retried rather than consumed: a caller that hands one
+    /// over has no further use for it.
+    ///
     /// # Errors
     ///
     /// [`StepError`] when no attempt applies.
+    #[allow(clippy::too_many_lines, clippy::needless_pass_by_value)]
     pub fn replace_range(
         &mut self,
         from: usize,
@@ -162,12 +167,12 @@ impl Transform {
         // the very start of a node wants.
         let mut targets: Vec<isize> = covered_depths(&r_from, &r_to)
             .into_iter()
-            .map(|d| d as isize)
+            .map(usize::cast_signed)
             .collect();
         if targets.last() == Some(&0) {
             targets.pop();
         }
-        let mut preferred: isize = -((r_from.depth() + 1) as isize);
+        let mut preferred: isize = -(r_from.depth() + 1).cast_signed();
         targets.insert(0, preferred);
 
         {
@@ -177,10 +182,10 @@ impl Transform {
                 if spec.defining || spec.isolating {
                     break;
                 }
-                if targets.contains(&(d as isize)) {
-                    preferred = d as isize;
+                if targets.contains(&d.cast_signed()) {
+                    preferred = d.cast_signed();
                 } else if r_from.before(d) == pos {
-                    targets.insert(1, -(d as isize));
+                    targets.insert(1, -d.cast_signed());
                 }
                 pos = pos.wrapping_sub(1);
             }
