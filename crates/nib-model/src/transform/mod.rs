@@ -18,10 +18,13 @@
 //! A [`Transform`] is a document plus the steps taken to get there, with a
 //! [`Mapping`] that carries positions across the lot.
 
+pub mod fit;
 pub mod map;
+pub mod range;
 pub mod step;
 pub mod structure;
 
+pub use fit::replace_step;
 pub use map::{MapResult, Mapping, Recover, StepMap};
 pub use step::{Step, StepError};
 pub use structure::{

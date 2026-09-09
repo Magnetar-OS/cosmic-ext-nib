@@ -411,6 +411,13 @@ impl NodeType {
         marks.iter().all(|m| self.allows_mark_type(m.typ().id()))
     }
 
+    /// `marks` with everything this type forbids removed — how content is
+    /// coerced as it moves into a stricter node.
+    #[must_use]
+    pub fn allowed_marks(&self, marks: &Marks) -> Marks {
+        marks.retain_allowed(|t| self.allows_mark_type(t.id()))
+    }
+
     /// True when `content` is legal for this type, start to finish.
     #[must_use]
     pub fn valid_content(&self, content: &Fragment) -> bool {
