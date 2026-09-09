@@ -53,6 +53,7 @@ use cosmic::iced::{
     window,
 };
 use cosmic::iced::advanced::text::{Affinity, LineHeight, Text, Wrapping};
+use cosmic::iced::advanced::input_method::{self, InputMethod};
 use nib_model::commands;
 use nib_model::decoration::DecorationSet;
 use nib_model::input_rules::InputRule;
@@ -246,6 +247,12 @@ struct Internal<P> {
     working: Option<EditorState>,
     /// What `self.state` held when `working` was last reconciled.
     seen: Option<(Node, Selection)>,
+    /// Text an input method is still composing.
+    ///
+    /// It is not in the document, and must not be: an edit that has not been
+    /// committed is not something to undo, send to a collaborator, or save.
+    /// It is drawn where the caret is and replaced when the method commits.
+    preedit: Option<(String, Option<std::ops::Range<usize>>)>,
     now: Instant,
 }
 
@@ -266,6 +273,7 @@ impl<P> Default for Internal<P> {
             clipboard: None,
             working: None,
             seen: None,
+            preedit: None,
             now: Instant::now(),
         }
     }
@@ -501,6 +509,68 @@ where
             );
         }
 
+        // Composing text, drawn where it will land. It is not in the document
+        // — an uncommitted edit is not something to undo or send anywhere —
+        // so it is drawn rather than inserted.
+        if internal.focused
+            && let Some((content, selection)) = &internal.preedit
+            && let Some(at) = internal.caret.visible(internal.now, std::time::Duration::ZERO)
+        {
+            let at = at + Vector::new(origin.x, origin.y);
+            // A rough advance: composing text is a few characters and the
+            // underline only has to sit beneath them.
+            #[allow(clippy::cast_precision_loss)]
+            let width = style.text_size * 0.62 * content.chars().count() as f32;
+            renderer.fill_quad(
+                renderer::Quad {
+                    bounds: Rectangle {
+                        x: at.x,
+                        y: at.y + at.height - 1.5,
+                        width,
+                        height: 1.5,
+                    },
+                    ..renderer::Quad::default()
+                },
+                Background::Color(style.colors.caret),
+            );
+            if let Some(range) = selection
+                && range.start < range.end
+            {
+                #[allow(clippy::cast_precision_loss)]
+                let (from, to) = (range.start as f32, range.end as f32);
+                let unit = style.text_size * 0.62;
+                renderer.fill_quad(
+                    renderer::Quad {
+                        bounds: Rectangle {
+                            x: at.x + from * unit,
+                            y: at.y,
+                            width: (to - from) * unit,
+                            height: at.height,
+                        },
+                        ..renderer::Quad::default()
+                    },
+                    Background::Color(style.colors.selection),
+                );
+            }
+            renderer.fill_text(
+                Text {
+                    content: content.clone(),
+                    bounds: Size::new(width.max(style.text_size), at.height),
+                    size: style.text_size.into(),
+                    line_height: LineHeight::Absolute(at.height.into()),
+                    font: style.body_font,
+                    align_x: cosmic::iced::advanced::text::Alignment::Default,
+                    align_y: cosmic::iced::alignment::Vertical::Top,
+                    shaping: cosmic::iced::advanced::text::Shaping::Advanced,
+                    wrapping: Wrapping::None,
+                    ellipsize: cosmic::iced::advanced::text::Ellipsize::None,
+                },
+                at.position(),
+                style.colors.text,
+                *viewport,
+            );
+        }
+
         // The caret last, over everything.
         if internal.focused
             && let Some(rect) = internal.caret.visible(internal.now, style.blink_period)
@@ -644,7 +714,54 @@ where
                 }
             }
 
+            Event::InputMethod(event) => {
+                if !internal.focused {
+                    return;
+                }
+                match event {
+                    input_method::Event::Opened | input_method::Event::Closed => {
+                        internal.preedit = None;
+                    }
+                    input_method::Event::Preedit(content, selection) => {
+                        internal.preedit = if content.is_empty() {
+                            None
+                        } else {
+                            Some((content.clone(), selection.clone()))
+                        };
+                        internal.caret.touch(internal.now);
+                        shell.request_redraw();
+                    }
+                    input_method::Event::Commit(text) => {
+                        internal.preedit = None;
+                        let state = self.live(internal).clone();
+                        let mut tr = state.tr().now();
+                        if tr.insert_text(text).is_ok() {
+                            self.apply(internal, shell, tr.clone());
+                        }
+                        shell.request_redraw();
+                    }
+                }
+                shell.capture_event();
+            }
+
             _ => {}
+        }
+
+        // Tell the runtime where the composing window should sit, and what is
+        // being composed — a method that does not know where the caret is puts
+        // its candidate list over the text being typed.
+        if internal.focused {
+            let cursor = internal
+                .caret
+                .visible(internal.now, std::time::Duration::ZERO)
+                .map_or(bounds, |rect| rect + Vector::new(bounds.x, bounds.y));
+            shell.request_input_method(&InputMethod::<String>::Enabled {
+                cursor,
+                purpose: input_method::Purpose::Normal,
+                // Drawn on the spot below, so the runtime is not asked to
+                // overlay it as well.
+                preedit: None,
+            });
         }
     }
 }
@@ -1214,8 +1331,8 @@ impl<Message> Editor<'_, Message> {
         Self::position_at(internal, Point::new(x, here.y + here.height / 2.0))
     }
 
-    fn copy<P>(&self, internal: &Internal<P>, clipboard: &mut dyn Clipboard) -> bool {
-        let state = self.live(internal);
+    fn copy<P>(&self, internal: &mut Internal<P>, clipboard: &mut dyn Clipboard) -> bool {
+        let state = self.live(internal).clone();
         let selection = state.selection();
         if selection.is_empty() {
             return false;
@@ -1223,11 +1340,13 @@ impl<Message> Editor<'_, Message> {
         let slice = selection.content(state.doc());
         clipboard.write(
             cosmic::iced::advanced::clipboard::Kind::Standard,
-            plain_text(state, &slice),
+            plain_text(&state, &slice),
         );
-        // The structured slice is kept alongside: the system clipboard carries
-        // text, and a paste back into this application should not lose the
-        // headings on the way.
+        // The structured slice is kept alongside. The system clipboard carries
+        // text and nothing else — iced exposes no rich flavour — so a paste
+        // into another application arrives as text, and a paste back into this
+        // one keeps its headings.
+        internal.clipboard = Some(slice);
         true
     }
 

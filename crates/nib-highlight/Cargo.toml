@@ -1,0 +1,27 @@
+[package]
+name = "cosmic-ext-nib-highlight"
+description = "Syntax highlighting for a Nib document's code blocks"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+
+[lib]
+name = "nib_highlight"
+path = "src/lib.rs"
+
+[dependencies]
+nib-model.workspace = true
+# `regex-fancy` rather than `regex-onig`: onig is a C library, and a Rust
+# desktop application that grows a C build dependency for syntax colours has
+# made a bad trade. No themes are pulled in — the colours come from COSMIC.
+syntect = { version = "5.3", default-features = false, features = [
+    "parsing",
+    "default-syntaxes",
+    "regex-fancy",
+] }
+
+[lints]
+workspace = true
