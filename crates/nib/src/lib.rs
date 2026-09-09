@@ -46,13 +46,13 @@ pub use style::{Caret, Colors, Style};
 use std::time::Instant;
 
 use cosmic::iced::advanced::text::Renderer as TextRenderer;
-use cosmic::iced::advanced::widget::{Tree, tree};
+use cosmic::iced::advanced::widget::{Id, Operation, Tree, operation, tree};
 use cosmic::iced::advanced::{Clipboard, Layout, Shell, Widget, layout, mouse, renderer};
 use cosmic::iced::{
     Background, Border, Color, Element, Event, Length, Point, Rectangle, Size, Vector, keyboard,
     window,
 };
-use cosmic::iced::advanced::text::{Affinity, Text, Wrapping};
+use cosmic::iced::advanced::text::{Affinity, LineHeight, Text, Wrapping};
 use nib_model::commands;
 use nib_model::decoration::DecorationSet;
 use nib_model::input_rules::InputRule;
@@ -93,6 +93,8 @@ pub struct Editor<'a, Message> {
     input_rules: Option<&'a [InputRule]>,
     style: Option<Style>,
     on_action: Option<Box<dyn Fn(Action) -> Message + 'a>>,
+    id: Option<Id>,
+    autofocus: bool,
     width: Length,
     height: Length,
 }
@@ -108,6 +110,8 @@ impl<'a> Editor<'a, ()> {
             input_rules: None,
             style: None,
             on_action: None,
+            id: None,
+            autofocus: false,
             width: Length::Fill,
             height: Length::Shrink,
         }
@@ -125,6 +129,8 @@ impl<'a, Message> Editor<'a, Message> {
             input_rules: self.input_rules,
             style: self.style,
             on_action: Some(Box::new(f)),
+            id: self.id,
+            autofocus: self.autofocus,
             width: self.width,
             height: self.height,
         }
@@ -151,6 +157,25 @@ impl<'a, Message> Editor<'a, Message> {
     #[must_use]
     pub fn input_rules(mut self, rules: &'a [InputRule]) -> Self {
         self.input_rules = Some(rules);
+        self
+    }
+
+    /// Names the editor, so focus can be moved to it — with Tab, or when a
+    /// window opens on a document the user is expected to start typing in.
+    #[must_use]
+    pub fn id(mut self, id: Id) -> Self {
+        self.id = Some(id);
+        self
+    }
+
+    /// Takes keyboard focus the first time it is laid out.
+    ///
+    /// For a window that opens on a document the user is expected to start
+    /// typing in. Off by default, because a page with an editor *and* a search
+    /// box has to decide which one, and the widget is not the one that knows.
+    #[must_use]
+    pub fn autofocus(mut self) -> Self {
+        self.autofocus = true;
         self
     }
 
@@ -181,6 +206,8 @@ struct Internal<P> {
     blocks: Vec<Block>,
     /// Where each block was laid out, relative to the widget's origin.
     bounds: Vec<Rectangle>,
+    /// Whether the first layout has happened, so autofocus fires once.
+    laid_out: bool,
     /// The document these were built from, so an unchanged one is not rebuilt.
     /// Comparing two `Node`s is a handful of pointer comparisons.
     built_from: Option<Node>,
@@ -194,6 +221,17 @@ struct Internal<P> {
     /// The slice most recently copied, so a paste inside the application keeps
     /// its structure. The system clipboard carries the plain text.
     clipboard: Option<Slice>,
+    /// The state as of the last transaction this widget emitted.
+    ///
+    /// A frame can carry several key events, and the application does not see
+    /// any of them until the frame is over — so without this, every keystroke
+    /// in a burst would be built against the same stale document and the
+    /// positions of all but the first would be wrong. Cleared as soon as the
+    /// application hands back a state that differs from the one this was
+    /// derived from.
+    working: Option<EditorState>,
+    /// What `self.state` held when `working` was last reconciled.
+    seen: Option<(Node, Selection)>,
     now: Instant,
 }
 
@@ -203,6 +241,7 @@ impl<P> Default for Internal<P> {
             paragraphs: Vec::new(),
             blocks: Vec::new(),
             bounds: Vec::new(),
+            laid_out: false,
             built_from: None,
             built_width: 0.0,
             caret: caret::Animation::new(Instant::now()),
@@ -210,6 +249,8 @@ impl<P> Default for Internal<P> {
             drag_anchor: None,
             goal_x: None,
             clipboard: None,
+            working: None,
+            seen: None,
             now: Instant::now(),
         }
     }
@@ -246,6 +287,11 @@ where
         let width = limits.max().width;
 
         self.rebuild(internal, &style, width);
+        if self.autofocus && !internal.laid_out {
+            internal.laid_out = true;
+            internal.focused = true;
+            internal.caret.touch(internal.now);
+        }
         let height = internal
             .bounds
             .last()
@@ -349,7 +395,7 @@ where
                         content: style::marker_text(marker),
                         bounds: Size::new(style.text_size * 2.0, bounds.height),
                         size: style.text_size.into(),
-                        line_height: style.line_height_of(block).into(),
+                        line_height: LineHeight::Absolute(style.line_height_of(block).into()),
                         font: style.body_font,
                         align_x: cosmic::iced::advanced::text::Alignment::Right,
                         align_y: cosmic::iced::alignment::Vertical::Top,
@@ -415,6 +461,17 @@ where
         }
     }
 
+    fn operate(
+        &mut self,
+        tree: &mut Tree,
+        layout: Layout<'_>,
+        _renderer: &Renderer,
+        operation: &mut dyn Operation,
+    ) {
+        let internal = tree.state.downcast_mut::<Internal<Renderer::Paragraph>>();
+        operation.focusable(self.id.as_ref(), layout.bounds(), internal);
+    }
+
     fn mouse_interaction(
         &self,
         _tree: &Tree,
@@ -443,9 +500,9 @@ where
         _viewport: &Rectangle,
     ) {
         let internal = tree.state.downcast_mut::<Internal<Renderer::Paragraph>>();
+        self.reconcile(internal);
         let style = self.resolved_style_without_theme();
         let bounds = layout.bounds();
-
         match event {
             Event::Window(window::Event::RedrawRequested(now)) => {
                 internal.now = *now;
@@ -479,7 +536,7 @@ where
                     internal.drag_anchor = Some(pos);
                     internal.goal_x = None;
                     internal.caret.touch(internal.now);
-                    self.select(shell, Selection::cursor(pos));
+                    self.select(internal, shell, Selection::cursor(pos));
                 }
                 shell.capture_event();
                 shell.request_redraw();
@@ -495,8 +552,8 @@ where
                 if let Some(head) = Self::position_at(internal, Point::new(local.x, local.y))
                     && head != anchor
                 {
-                    let doc = self.state.doc();
-                    self.select(shell, Selection::between(doc, anchor, head));
+                    let doc = self.live(internal).doc().clone();
+                    self.select(internal, shell, Selection::between(&doc, anchor, head));
                     shell.request_redraw();
                 }
             }
@@ -526,6 +583,23 @@ where
     }
 }
 
+impl<P> operation::Focusable for Internal<P> {
+    fn is_focused(&self) -> bool {
+        self.focused
+    }
+
+    fn focus(&mut self) {
+        self.focused = true;
+        // A caret that arrived dark is a caret nobody finds.
+        self.caret.touch(self.now);
+    }
+
+    fn unfocus(&mut self) {
+        self.focused = false;
+        self.drag_anchor = None;
+    }
+}
+
 impl<Message> Editor<'_, Message> {
     /// The style, without a theme to hand.
     ///
@@ -538,20 +612,46 @@ impl<Message> Editor<'_, Message> {
             .unwrap_or_else(|| Style::from_theme(&cosmic::Theme::default()))
     }
 
+    /// Drops the working state once the application has moved on.
+    fn reconcile<P>(&self, internal: &mut Internal<P>) {
+        let here = (self.state.doc().clone(), self.state.selection().clone());
+        if internal.seen.as_ref() != Some(&here) {
+            internal.seen = Some(here);
+            internal.working = None;
+        }
+    }
+
+    /// The state edits are built against: what this widget has already done
+    /// this frame, or what the application gave it.
+    fn live<'s, P>(&'s self, internal: &'s Internal<P>) -> &'s EditorState {
+        internal.working.as_ref().unwrap_or(self.state)
+    }
+
     fn emit(&self, shell: &mut Shell<'_, Message>, action: Action) {
         if let Some(f) = &self.on_action {
             shell.publish(f(action));
         }
     }
 
-    fn apply(&self, shell: &mut Shell<'_, Message>, tr: Transaction) {
+    fn apply<P>(
+        &self,
+        internal: &mut Internal<P>,
+        shell: &mut Shell<'_, Message>,
+        tr: Transaction,
+    ) {
+        internal.working = Some(self.live(internal).applied(tr.clone()));
         self.emit(shell, Action::Edit(Box::new(tr)));
     }
 
-    fn select(&self, shell: &mut Shell<'_, Message>, selection: Selection) {
-        let mut tr = self.state.tr();
+    fn select<P>(
+        &self,
+        internal: &mut Internal<P>,
+        shell: &mut Shell<'_, Message>,
+        selection: Selection,
+    ) {
+        let mut tr = self.live(internal).tr();
         tr.set_selection(selection);
-        self.apply(shell, tr.clone());
+        self.apply(internal, shell, tr.clone());
     }
 
     /// Rebuilds the block list and its paragraphs when the document or the
@@ -590,7 +690,7 @@ impl<Message> Editor<'_, Message> {
                         content: spans.as_slice(),
                         bounds: Size::new(available, f32::INFINITY),
                         size: style.size_of(block).into(),
-                        line_height: style.line_height_of(block).into(),
+                        line_height: LineHeight::Absolute(style.line_height_of(block).into()),
                         font: style.body_font,
                         align_x: cosmic::iced::advanced::text::Alignment::Default,
                         align_y: cosmic::iced::alignment::Vertical::Top,
@@ -745,11 +845,12 @@ impl<Message> Editor<'_, Message> {
                 _ => {}
             }
         }
+        let state = self.live(internal).clone();
 
         // Motion is the widget's, because only the widget knows where the
         // lines are.
-        if let Some(tr) = self.motion(internal, key, modifiers) {
-            self.apply(shell, tr);
+        if let Some(tr) = self.motion(internal, &state, key, modifiers) {
+            self.apply(internal, shell, tr);
             return true;
         }
 
@@ -757,14 +858,14 @@ impl<Message> Editor<'_, Message> {
         let keymap = if let Some(keymap) = self.keymap {
             keymap
         } else {
-            owned = Keymap::base(self.state.schema());
+            owned = Keymap::base(state.schema());
             &owned
         };
         if let Some(binding) = to_binding(key, modifiers)
-            && let Some(tr) = keymap.handle(self.state, &binding)
+            && let Some(tr) = keymap.handle(&state, &binding)
         {
             internal.goal_x = None;
-            self.apply(shell, tr);
+            self.apply(internal, shell, tr);
             return true;
         }
 
@@ -776,18 +877,15 @@ impl<Message> Editor<'_, Message> {
             return false;
         }
         internal.goal_x = None;
-        let (from, to) = (
-            self.state.selection().from(),
-            self.state.selection().to(),
-        );
+        let (from, to) = (state.selection().from(), state.selection().to());
         let rules = self.input_rules.unwrap_or(&[]);
-        if let Some(tr) = nib_model::input_rules::apply(self.state, rules, from, to, text) {
-            self.apply(shell, tr);
+        if let Some(tr) = nib_model::input_rules::apply(&state, rules, from, to, text) {
+            self.apply(internal, shell, tr);
             return true;
         }
-        let mut tr = self.state.tr().now();
+        let mut tr = state.tr().now();
         if tr.insert_text(text).is_ok() {
-            self.apply(shell, tr.clone());
+            self.apply(internal, shell, tr.clone());
             return true;
         }
         false
@@ -800,6 +898,7 @@ impl<Message> Editor<'_, Message> {
     fn motion<P>(
         &self,
         internal: &mut Internal<P>,
+        state: &EditorState,
         key: &keyboard::Key,
         modifiers: keyboard::Modifiers,
     ) -> Option<Transaction>
@@ -811,8 +910,8 @@ impl<Message> Editor<'_, Message> {
         let keyboard::Key::Named(named) = key else {
             return None;
         };
-        let doc = self.state.doc();
-        let selection = self.state.selection();
+        let doc = state.doc();
+        let selection = state.selection();
         let head = selection.head();
 
         let target = match named {
@@ -820,9 +919,9 @@ impl<Message> Editor<'_, Message> {
                 internal.goal_x = None;
                 let forward = *named == Named::ArrowRight;
                 if modifiers.command() {
-                    self.by_word(head, forward)
+                    Self::by_word(doc, head, forward)
                 } else {
-                    self.by_grapheme(head, forward)
+                    Self::by_grapheme(doc, head, forward)
                 }
             }
             Named::ArrowUp | Named::ArrowDown => {
@@ -844,7 +943,7 @@ impl<Message> Editor<'_, Message> {
         } else {
             Selection::between(doc, target, target)
         };
-        let mut tr = self.state.tr();
+        let mut tr = state.tr();
         tr.set_selection(selection);
         Some(tr.clone())
     }
@@ -852,10 +951,9 @@ impl<Message> Editor<'_, Message> {
     /// One grapheme cluster left or right — not one byte, and not one
     /// character: an emoji with a skin tone is one thing to the user however
     /// many code points it is.
-    fn by_grapheme(&self, from: usize, forward: bool) -> Option<usize> {
+    fn by_grapheme(doc: &Node, from: usize, forward: bool) -> Option<usize> {
         use unicode_segmentation::UnicodeSegmentation;
 
-        let doc = self.state.doc();
         let at = doc.resolve(from);
         let text = at.parent().text_content();
         let start = at.start(at.depth());
@@ -881,10 +979,9 @@ impl<Message> Editor<'_, Message> {
     }
 
     /// To the next word boundary.
-    fn by_word(&self, from: usize, forward: bool) -> Option<usize> {
+    fn by_word(doc: &Node, from: usize, forward: bool) -> Option<usize> {
         use unicode_segmentation::UnicodeSegmentation;
 
-        let doc = self.state.doc();
         let at = doc.resolve(from);
         let text = at.parent().text_content();
         let start = at.start(at.depth());
@@ -903,7 +1000,7 @@ impl<Message> Editor<'_, Message> {
         };
         match boundary {
             Some(offset) => Some(start + offset),
-            None => self.by_grapheme(from, forward),
+            None => Self::by_grapheme(doc, from, forward),
         }
     }
 
@@ -952,15 +1049,15 @@ impl<Message> Editor<'_, Message> {
     }
 
     fn copy<P>(&self, internal: &Internal<P>, clipboard: &mut dyn Clipboard) -> bool {
-        let _ = internal;
-        let selection = self.state.selection();
+        let state = self.live(internal);
+        let selection = state.selection();
         if selection.is_empty() {
             return false;
         }
-        let slice = selection.content(self.state.doc());
+        let slice = selection.content(state.doc());
         clipboard.write(
             cosmic::iced::advanced::clipboard::Kind::Standard,
-            plain_text(self.state, &slice),
+            plain_text(state, &slice),
         );
         // The structured slice is kept alongside: the system clipboard carries
         // text, and a paste back into this application should not lose the
@@ -970,41 +1067,42 @@ impl<Message> Editor<'_, Message> {
 
     fn cut<P>(
         &self,
-        internal: &Internal<P>,
+        internal: &mut Internal<P>,
         clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>,
     ) -> bool {
         if !self.copy(internal, clipboard) {
             return false;
         }
-        let mut tr = self.state.tr().now();
+        let mut tr = self.live(internal).tr().now();
         if tr.delete_selection().is_ok() {
-            self.apply(shell, tr.clone());
+            self.apply(internal, shell, tr.clone());
         }
         true
     }
 
     fn paste<P>(
         &self,
-        internal: &Internal<P>,
+        internal: &mut Internal<P>,
         clipboard: &mut dyn Clipboard,
         shell: &mut Shell<'_, Message>,
     ) -> bool {
+        let state = self.live(internal).clone();
         let text = clipboard.read(cosmic::iced::advanced::clipboard::Kind::Standard);
         let slice = match (&internal.clipboard, text.as_deref()) {
             // The remembered slice is used only when the system clipboard
             // still holds what it was copied from; otherwise something else
             // was copied since.
-            (Some(slice), Some(text)) if plain_text(self.state, slice) == text => slice.clone(),
-            (_, Some(text)) => parse_plain(self.state, text),
+            (Some(slice), Some(text)) if plain_text(&state, slice) == text => slice.clone(),
+            (_, Some(text)) => parse_plain(&state, text),
             (_, None) => return false,
         };
         if slice.is_empty() {
             return false;
         }
-        let mut tr = self.state.tr().now();
+        let mut tr = state.tr().now();
         if tr.replace_selection(slice).is_ok() {
-            self.apply(shell, tr.clone());
+            self.apply(internal, shell, tr.clone());
         }
         true
     }
