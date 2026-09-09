@@ -20,6 +20,9 @@
 //!   documents where the trailing space is part of the URL.
 //! - **`code` excludes everything.** A bold monospace run is two decisions
 //!   fighting, and inline code is the one that means something.
+//! - **Table cells are `isolating`.** A selection, a join or a lift that
+//!   reached across a cell boundary would turn a grid into prose. Isolation is
+//!   the schema saying so once, rather than every command checking.
 //! - **`heading`, `blockquote`, `list_item` and `code_block` are `defining`.**
 //!   Content lifted out of them keeps them: pasting a paragraph from a quote
 //!   into a quote keeps one quote, not two, and pasting a list item into
@@ -46,6 +49,10 @@ pub mod nodes {
     pub const BULLET_LIST: &str = "bullet_list";
     pub const ORDERED_LIST: &str = "ordered_list";
     pub const LIST_ITEM: &str = "list_item";
+    pub const TABLE: &str = "table";
+    pub const TABLE_ROW: &str = "table_row";
+    pub const TABLE_CELL: &str = "table_cell";
+    pub const TABLE_HEADER: &str = "table_header";
     pub const TEXT: &str = "text";
     pub const IMAGE: &str = "image";
     pub const HARD_BREAK: &str = "hard_break";
@@ -135,6 +142,39 @@ fn build() -> Schema {
             // including a nested list. Requiring the leading paragraph is what
             // gives the caret somewhere to be in an empty item.
             NodeSpec::new().content("paragraph block*").defining(),
+        )
+        // Tables. Cells are `isolating`, which is what stops a selection, a
+        // join or a lift from reaching across a cell boundary — the property
+        // that makes a table behave like a grid rather than like nested
+        // blockquotes that happen to be drawn in a row.
+        .node(
+            nodes::TABLE,
+            NodeSpec::new()
+                .content("table_row+")
+                .group("block")
+                .isolating(),
+        )
+        .node(
+            nodes::TABLE_ROW,
+            NodeSpec::new().content("(table_cell | table_header)+"),
+        )
+        .node(
+            nodes::TABLE_CELL,
+            NodeSpec::new()
+                .content("block+")
+                .isolating()
+                .attr("colspan", AttrSpec::new(1_i64))
+                .attr("rowspan", AttrSpec::new(1_i64))
+                .attr("align", AttrSpec::new(Value::Null)),
+        )
+        .node(
+            nodes::TABLE_HEADER,
+            NodeSpec::new()
+                .content("block+")
+                .isolating()
+                .attr("colspan", AttrSpec::new(1_i64))
+                .attr("rowspan", AttrSpec::new(1_i64))
+                .attr("align", AttrSpec::new(Value::Null)),
         )
         .node(
             nodes::TEXT,
