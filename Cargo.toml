@@ -19,6 +19,7 @@ members = [
     "crates/nib-html",
     "crates/nib-markdown",
     "crates/nib-text",
+    "crates/nib",
 ]
 
 [workspace.package]

@@ -1,0 +1,32 @@
+[package]
+name = "cosmic-ext-nib"
+description = "A rich text editor widget for libcosmic"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+
+[lib]
+name = "nib"
+path = "src/lib.rs"
+
+[dependencies]
+nib-model.workspace = true
+nib-html = { workspace = true, optional = true }
+nib-text = { workspace = true, optional = true }
+# Unpinned, like every COSMIC application: the consumer's Cargo.lock decides
+# the revision, and because the source URL is the same as theirs, cargo unifies
+# it with the application's own libcosmic rather than building two.
+libcosmic = { git = "https://github.com/pop-os/libcosmic.git" }
+unicode-segmentation.workspace = true
+
+[features]
+# The clipboard carries HTML as well as text, so both serialisers are on by
+# default. An application that only ever pastes plain text can turn them off.
+default = ["clipboard"]
+clipboard = ["dep:nib-html", "dep:nib-text"]
+
+[lints]
+workspace = true
