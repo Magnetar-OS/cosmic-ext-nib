@@ -133,9 +133,81 @@ fn a_table_flattens_to_its_cells_contents() {
     )]);
     let found = flatten(&doc);
     assert_eq!(found.len(), 2);
-    assert!(found.iter().all(|block| block.in_table));
+    let cells: Vec<_> = found.iter().filter_map(|block| block.cell).collect();
+    assert_eq!(cells.len(), 2);
+    assert_eq!((cells[0].row, cells[0].column), (0, 0));
+    assert_eq!((cells[1].row, cells[1].column), (0, 1));
     assert_eq!(found[0].text, "a");
     assert_eq!(found[1].text, "b");
+}
+
+#[test]
+fn a_cell_spanning_columns_moves_the_next_one_along() {
+    let b = b();
+    let wide = b.attr_node(
+        nodes::TABLE_CELL,
+        &attrs! { "colspan" => 2_i64 },
+        nodes![b.node(nodes::PARAGRAPH, nodes![b.text("wide")])],
+    );
+    let narrow = b.node(
+        nodes::TABLE_CELL,
+        nodes![b.node(nodes::PARAGRAPH, nodes![b.text("after")])],
+    );
+    let doc = b.doc(nodes![b.node(
+        nodes::TABLE,
+        nodes![b.node(nodes::TABLE_ROW, nodes![wide, narrow])]
+    )]);
+    let found = flatten(&doc);
+    let cells: Vec<_> = found.iter().filter_map(|block| block.cell).collect();
+    assert_eq!(cells[0].span, 2);
+    assert_eq!(cells[1].column, 2, "the next cell starts past the span");
+}
+
+#[test]
+fn a_header_row_is_marked_as_one() {
+    let b = b();
+    let header = b.node(
+        nodes::TABLE_HEADER,
+        nodes![b.node(nodes::PARAGRAPH, nodes![b.text("name")])],
+    );
+    let body = b.node(
+        nodes::TABLE_CELL,
+        nodes![b.node(nodes::PARAGRAPH, nodes![b.text("value")])],
+    );
+    let doc = b.doc(nodes![b.node(
+        nodes::TABLE,
+        nodes![
+            b.node(nodes::TABLE_ROW, nodes![header]),
+            b.node(nodes::TABLE_ROW, nodes![body]),
+        ]
+    )]);
+    let found = flatten(&doc);
+    assert!(found[0].cell.expect("a cell").header);
+    assert!(!found[1].cell.expect("a cell").header);
+    assert_eq!(found[1].cell.expect("a cell").row, 1);
+}
+
+#[test]
+fn two_tables_in_a_row_are_told_apart() {
+    let b = b();
+    let table = |text: &str| {
+        b.node(
+            nodes::TABLE,
+            nodes![b.node(
+                nodes::TABLE_ROW,
+                nodes![b.node(
+                    nodes::TABLE_CELL,
+                    nodes![b.node(nodes::PARAGRAPH, nodes![b.text(text)])]
+                )]
+            )],
+        )
+    };
+    let doc = b.doc(nodes![table("first"), table("second")]);
+    let found = flatten(&doc);
+    assert_ne!(
+        found[0].cell.expect("a cell").table,
+        found[1].cell.expect("a cell").table
+    );
 }
 
 #[test]

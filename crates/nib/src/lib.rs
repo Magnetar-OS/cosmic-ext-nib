@@ -199,6 +199,18 @@ impl<'a, Message> Editor<'a, Message> {
     }
 }
 
+/// Where a table was laid out, so its rules can be drawn.
+#[derive(Debug, Clone)]
+struct TableGeometry {
+    bounds: Rectangle,
+    /// The y of the bottom of each row, in widget coordinates.
+    row_bottoms: Vec<f32>,
+    /// Whether the first row is a header, so it gets a heavier rule.
+    header: bool,
+    /// The x of each column boundary after the first.
+    column_edges: Vec<f32>,
+}
+
 /// What the widget keeps between frames.
 struct Internal<P> {
     /// One per block, index-aligned with `blocks`.
@@ -206,6 +218,8 @@ struct Internal<P> {
     blocks: Vec<Block>,
     /// Where each block was laid out, relative to the widget's origin.
     bounds: Vec<Rectangle>,
+    /// One per table, for the lines between rows.
+    tables: Vec<TableGeometry>,
     /// Whether the first layout has happened, so autofocus fires once.
     laid_out: bool,
     /// The document these were built from, so an unchanged one is not rebuilt.
@@ -241,6 +255,7 @@ impl<P> Default for Internal<P> {
             paragraphs: Vec::new(),
             blocks: Vec::new(),
             bounds: Vec::new(),
+            tables: Vec::new(),
             laid_out: false,
             built_from: None,
             built_width: 0.0,
@@ -320,6 +335,57 @@ where
         let origin = layout.bounds().position();
         let selection = self.state.selection();
         let (from, to) = (selection.from(), selection.to());
+
+        // Table rules first, so cell content sits on top of them.
+        for table in &internal.tables {
+            let bounds = table.bounds + Vector::new(origin.x, origin.y);
+            if !bounds.intersects(viewport) {
+                continue;
+            }
+            let hairline = 1.0;
+            let quiet = Color {
+                a: style.colors.muted.a * 0.35,
+                ..style.colors.muted
+            };
+            let mut rule = |rect: Rectangle, color: Color| {
+                renderer.fill_quad(
+                    renderer::Quad {
+                        bounds: rect,
+                        ..renderer::Quad::default()
+                    },
+                    Background::Color(color),
+                );
+            };
+            for (i, bottom) in table.row_bottoms.iter().enumerate() {
+                // A header's rule is the one that carries meaning; the rest
+                // are there to be followed, not read.
+                let heavier = table.header && i == 0;
+                let last = i + 1 == table.row_bottoms.len();
+                if last {
+                    continue;
+                }
+                rule(
+                    Rectangle {
+                        x: bounds.x,
+                        y: origin.y + bottom,
+                        width: bounds.width,
+                        height: hairline,
+                    },
+                    if heavier { style.colors.muted } else { quiet },
+                );
+            }
+            for edge in &table.column_edges {
+                rule(
+                    Rectangle {
+                        x: origin.x + edge,
+                        y: bounds.y,
+                        width: hairline,
+                        height: bounds.height,
+                    },
+                    quiet,
+                );
+            }
+        }
 
         for (index, block) in internal.blocks.iter().enumerate() {
             let Some(bounds) = internal.bounds.get(index) else {
@@ -671,53 +737,153 @@ impl<Message> Editor<'_, Message> {
         internal.blocks = blocks::flatten(doc);
         internal.paragraphs.clear();
         internal.bounds.clear();
+        internal.tables.clear();
 
         let empty = DecorationSet::empty();
         let decorations = self.decorations.unwrap_or(&empty);
         let mut y = style.padding;
+        let mut index = 0;
 
-        for block in &internal.blocks {
-            let indent = style.indent_of(block);
-            let x = style.padding + indent;
-            let available = (width - x - style.padding).max(style.text_size);
-
-            let (paragraph, height) = if block.kind == blocks::Kind::Rule {
-                (P::default(), style.text_size)
-            } else {
-                {
-                    let spans = style::spans(block, style, decorations);
-                    let text = Text {
-                        content: spans.as_slice(),
-                        bounds: Size::new(available, f32::INFINITY),
-                        size: style.size_of(block).into(),
-                        line_height: LineHeight::Absolute(style.line_height_of(block).into()),
-                        font: style.body_font,
-                        align_x: cosmic::iced::advanced::text::Alignment::Default,
-                        align_y: cosmic::iced::alignment::Vertical::Top,
-                        shaping: cosmic::iced::advanced::text::Shaping::Advanced,
-                        wrapping: style::wrapping(block),
-                        ellipsize: cosmic::iced::advanced::text::Ellipsize::None,
-                    };
-                    let paragraph = P::with_spans(text);
-                    // An empty block still occupies a line: a paragraph with
-                    // nothing in it must be tall enough to put a caret in.
-                    let height = paragraph
-                        .min_bounds()
-                        .height
-                        .max(style.line_height_of(block));
-                    (paragraph, height)
-                }
+        while index < internal.blocks.len() {
+            let Some(cell) = internal.blocks[index].cell else {
+                let block = &internal.blocks[index];
+                let x = style.padding + style.indent_of(block);
+                let available = (width - x - style.padding).max(style.text_size);
+                let (paragraph, height) = build(block, style, decorations, available);
+                internal.bounds.push(Rectangle {
+                    x,
+                    y,
+                    width: available,
+                    height,
+                });
+                internal.paragraphs.push(paragraph);
+                y += height + style.text_size * style.block_spacing;
+                index += 1;
+                continue;
             };
 
-            internal.bounds.push(Rectangle {
-                x,
-                y,
-                width: available,
-                height,
-            });
-            internal.paragraphs.push(paragraph);
-            y += height + style.text_size * style.block_spacing;
+            // A run of blocks belonging to one table is laid out as a grid
+            // rather than a stack, which is the only shape in which a table is
+            // a table.
+            let table = cell.table;
+            let end = index
+                + internal.blocks[index..]
+                    .iter()
+                    .take_while(|b| b.cell.is_some_and(|c| c.table == table))
+                    .count();
+            y = Self::lay_out_table(internal, index..end, style, decorations, width, y);
+            index = end;
         }
+    }
+
+    /// Lays out one table's cells side by side, returning the y below it.
+    fn lay_out_table<P>(
+        internal: &mut Internal<P>,
+        range: std::ops::Range<usize>,
+        style: &Style,
+        decorations: &DecorationSet,
+        width: f32,
+        top: f32,
+    ) -> f32
+    where
+        P: cosmic::iced::advanced::text::Paragraph<Font = cosmic::iced::Font> + 'static,
+    {
+        let blocks: Vec<Block> = internal.blocks[range].to_vec();
+        let columns = blocks
+            .iter()
+            .filter_map(|b| b.cell)
+            .map(|c| c.column + c.span)
+            .max()
+            .unwrap_or(1)
+            .max(1);
+        let header = blocks
+            .first()
+            .and_then(|b| b.cell)
+            .is_some_and(|c| c.header);
+
+        let gap = 1.0;
+        let inset = style.text_size * 0.45;
+        let left = style.padding;
+        let total = (width - style.padding * 2.0).max(style.text_size * 4.0);
+        #[allow(clippy::cast_precision_loss)]
+        let column_width = (total - gap * (columns - 1) as f32) / columns as f32;
+
+        let column_x = |column: usize| {
+            #[allow(clippy::cast_precision_loss)]
+            let offset = column as f32 * (column_width + gap);
+            left + offset
+        };
+
+        let mut y = top;
+        let mut row_bottoms = Vec::new();
+        let mut cursor = 0;
+
+        while cursor < blocks.len() {
+            let row = blocks[cursor].cell.map_or(0, |c| c.row);
+            let row_end = cursor
+                + blocks[cursor..]
+                    .iter()
+                    .take_while(|b| b.cell.is_some_and(|c| c.row == row))
+                    .count();
+
+            // Each cell stacks its own blocks; the row is as tall as the
+            // tallest of them.
+            let mut column_heights: Vec<(usize, f32)> = Vec::new();
+            for block in &blocks[cursor..row_end] {
+                let cell = block.cell.unwrap_or(blocks::Cell {
+                    table: 0,
+                    row,
+                    column: 0,
+                    span: 1,
+                    header: false,
+                    first: true,
+                });
+                #[allow(clippy::cast_precision_loss)]
+                let span = cell.span as f32;
+                let available =
+                    (column_width * span + gap * (span - 1.0) - inset * 2.0).max(style.text_size);
+                let (paragraph, height) = build(block, style, decorations, available);
+
+                let used = column_heights
+                    .iter()
+                    .find(|(c, _)| *c == cell.column)
+                    .map_or(0.0, |(_, h)| *h);
+                internal.bounds.push(Rectangle {
+                    x: column_x(cell.column) + inset,
+                    y: y + inset + used,
+                    width: available,
+                    height,
+                });
+                internal.paragraphs.push(paragraph);
+
+                let grown = used + height + style.text_size * style.block_spacing * 0.5;
+                match column_heights.iter_mut().find(|(c, _)| *c == cell.column) {
+                    Some(slot) => slot.1 = grown,
+                    None => column_heights.push((cell.column, grown)),
+                }
+            }
+
+            let tallest = column_heights
+                .iter()
+                .map(|(_, h)| *h)
+                .fold(style.text_size, f32::max);
+            y += tallest + inset * 2.0;
+            row_bottoms.push(y);
+            cursor = row_end;
+        }
+
+        internal.tables.push(TableGeometry {
+            bounds: Rectangle {
+                x: left,
+                y: top,
+                width: total,
+                height: y - top,
+            },
+            row_bottoms,
+            header,
+            column_edges: (1..columns).map(|c| column_x(c) - gap / 2.0).collect(),
+        });
+        y + style.text_size * style.block_spacing
     }
 
     /// The document position under a point in the widget's own coordinates.
@@ -1106,6 +1272,36 @@ impl<Message> Editor<'_, Message> {
         }
         true
     }
+}
+
+/// Lays out one block at a given width, giving its paragraph and its height.
+fn build<P>(block: &Block, style: &Style, decorations: &DecorationSet, available: f32) -> (P, f32)
+where
+    P: cosmic::iced::advanced::text::Paragraph<Font = cosmic::iced::Font> + 'static,
+{
+    if block.kind == blocks::Kind::Rule {
+        return (P::default(), style.text_size);
+    }
+    let spans = style::spans(block, style, decorations);
+    let paragraph = P::with_spans(Text {
+        content: spans.as_slice(),
+        bounds: Size::new(available, f32::INFINITY),
+        size: style.size_of(block).into(),
+        line_height: LineHeight::Absolute(style.line_height_of(block).into()),
+        font: style.body_font,
+        align_x: cosmic::iced::advanced::text::Alignment::Default,
+        align_y: cosmic::iced::alignment::Vertical::Top,
+        shaping: cosmic::iced::advanced::text::Shaping::Advanced,
+        wrapping: style::wrapping(block),
+        ellipsize: cosmic::iced::advanced::text::Ellipsize::None,
+    });
+    // An empty block still occupies a line: a paragraph with nothing in it
+    // must be tall enough to put a caret in.
+    let height = paragraph
+        .min_bounds()
+        .height
+        .max(style.line_height_of(block));
+    (paragraph, height)
 }
 
 /// The plain text of a slice.

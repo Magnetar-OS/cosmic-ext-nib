@@ -86,8 +86,29 @@ pub struct Block {
     pub level: Option<i64>,
     /// The code block's language, when this is one.
     pub language: Option<String>,
-    /// Whether this block is inside a table cell.
-    pub in_table: bool,
+    /// Where this block sits in a table, when it is in one.
+    pub cell: Option<Cell>,
+}
+
+/// Where a block sits in a table.
+///
+/// Carried on every block inside a cell rather than on the table, because the
+/// layout works over the flat list and has to be able to ask any block, on its
+/// own, which column it belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Cell {
+    /// Which table, counted in document order. Two tables in a row are told
+    /// apart by this and nothing else.
+    pub table: usize,
+    pub row: usize,
+    pub column: usize,
+    /// How many columns this cell spans.
+    pub span: usize,
+    /// Whether the cell is a header.
+    pub header: bool,
+    /// Whether this is the first block in its cell, so a border is drawn once
+    /// rather than per paragraph.
+    pub first: bool,
 }
 
 /// What precedes a list item's first block.
@@ -106,7 +127,8 @@ pub fn flatten(doc: &Node) -> Vec<Block> {
     let mut walker = Walker {
         indent: 0,
         quote_depth: 0,
-        in_table: false,
+        cell: None,
+        tables: 0,
         marker: None,
     };
     walker.children(doc, 0, &mut out);
@@ -116,7 +138,10 @@ pub fn flatten(doc: &Node) -> Vec<Block> {
 struct Walker {
     indent: usize,
     quote_depth: usize,
-    in_table: bool,
+    /// The cell currently being walked, if any.
+    cell: Option<Cell>,
+    /// How many tables have been started, so each gets its own number.
+    tables: usize,
     /// Set by a list item for the first block inside it, then taken.
     marker: Option<Marker>,
 }
@@ -158,18 +183,33 @@ impl Walker {
                     self.indent -= 1;
                 }
                 nodes::TABLE => {
-                    let was = self.in_table;
-                    self.in_table = true;
+                    let was = self.cell;
+                    let table = self.tables;
+                    self.tables += 1;
                     let mut row_pos = inner;
-                    for row in child.content() {
+                    for (row_index, row) in child.content().into_iter().enumerate() {
                         let mut cell_pos = row_pos + 1;
+                        let mut column = 0;
                         for cell in row.content() {
+                            let span = usize::try_from(
+                                cell.attrs().get_int("colspan").unwrap_or(1).max(1),
+                            )
+                            .unwrap_or(1);
+                            self.cell = Some(Cell {
+                                table,
+                                row: row_index,
+                                column,
+                                span,
+                                header: cell.type_name() == nodes::TABLE_HEADER,
+                                first: true,
+                            });
                             self.children(cell, cell_pos + 1, out);
+                            column += span;
                             cell_pos += cell.node_size();
                         }
                         row_pos += row.node_size();
                     }
-                    self.in_table = was;
+                    self.cell = was;
                 }
                 _ if child.is_textblock() => out.push(self.textblock(child, node_pos)),
                 _ if child.is_leaf() => out.push(self.leaf(child, node_pos)),
@@ -231,7 +271,7 @@ impl Walker {
                 .get_str("language")
                 .filter(|l| !l.is_empty())
                 .map(str::to_owned),
-            in_table: self.in_table,
+            cell: self.take_cell(),
         }
     }
 
@@ -258,8 +298,20 @@ impl Walker {
             inline: Vec::new(),
             level: None,
             language: None,
-            in_table: self.in_table,
+            cell: self.take_cell(),
         }
+    }
+
+    /// The current cell, with `first` set on the first block to ask for it.
+    fn take_cell(&mut self) -> Option<Cell> {
+        let cell = self.cell?;
+        if cell.first {
+            self.cell = Some(Cell {
+                first: false,
+                ..cell
+            });
+        }
+        Some(cell)
     }
 }
 
