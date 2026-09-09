@@ -94,8 +94,8 @@ opaque island. The two meet at the HTML serialiser, not in the layout engine.
 
 ## State
 
-Four of the five crates are written and tested, at 232 tests with no warnings
-under pedantic clippy.
+All five crates are written and tested, at 252 tests with no warnings under
+pedantic clippy.
 
 **`nib-model`** — schema and content-expression compiler, the node tree, marks,
 position resolution, slices, the replace algorithm, the slice fitter, position
@@ -111,9 +111,21 @@ MDC (`::card{title="x"}`) and MDX (`<Card title="x" />`) spellings.
 the mail quoting rules: what a quote is, how deep it goes, and where a
 signature starts.
 
-Still to come: the widget. A block tree of `cosmic_text::Editor`s laid out by
-iced, with cross-block selection, a caret that blinks and moves smoothly, and
-syntax highlighting driven by the decoration layer.
+**`nib`** — the widget. One widget rather than a tree of them, because a
+selection runs from a position in one block to a position in another. Text
+layout, shaping, hit testing and caret geometry come from iced's `Paragraph`,
+which is `cosmic-text` underneath. The caret glides rather than teleports,
+stops blinking while you type, and wakes twice a second rather than sixty
+times.
+
+```
+cargo run --example notebook
+```
+
+Still to come: table cells are laid out as a stack rather than a grid, IME
+preedit is not yet drawn, and the clipboard carries plain text rather than
+HTML — the structured slice is kept alongside so a paste back into the same
+application keeps its structure.
 
 ## Building
 
