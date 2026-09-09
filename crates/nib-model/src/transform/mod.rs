@@ -20,16 +20,26 @@
 
 pub mod map;
 pub mod step;
+pub mod structure;
 
 pub use map::{MapResult, Mapping, Recover, StepMap};
 pub use step::{Step, StepError};
+pub use structure::{
+    MarkFilter, TypeAndAttrs, can_join, can_split, find_wrapping, insert_point, join_point,
+    lift_target,
+};
 
 use crate::node::Node;
+use crate::schema::Schema;
 use crate::slice::Slice;
 
 /// A document with a record of how it got that way.
+///
+/// Carries its schema: every structural method needs it, and a transform only
+/// ever works on documents of one schema.
 #[derive(Debug, Clone)]
 pub struct Transform {
+    schema: Schema,
     doc: Node,
     steps: Vec<Step>,
     /// The document before each step, so a step can be inverted after the
@@ -41,13 +51,19 @@ pub struct Transform {
 
 impl Transform {
     #[must_use]
-    pub fn new(doc: Node) -> Self {
+    pub fn new(schema: Schema, doc: Node) -> Self {
         Self {
+            schema,
             doc,
             steps: Vec::new(),
             docs: Vec::new(),
             mapping: Mapping::new(),
         }
+    }
+
+    #[must_use]
+    pub fn schema(&self) -> &Schema {
+        &self.schema
     }
 
     /// The document as it now stands.

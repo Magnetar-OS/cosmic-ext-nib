@@ -352,12 +352,11 @@ impl ResolvedPos {
         if other.pos < self.pos {
             return other.block_range(self, pred);
         }
-        // When the position sits in a textblock, the range starts one level
-        // out — a range of inline content is not a range of blocks.
-        let inline = self.parent().is_textblock();
-        let start = self
-            .depth()
-            .checked_sub(usize::from(inline && self.pos != other.pos))?;
+        // A range of blocks starts one level out from a position that sits in
+        // inline content — and also from a collapsed position, which is asking
+        // "which blocks am I in" rather than "which blocks do I span".
+        let out = self.parent().is_textblock() || self.pos == other.pos;
+        let start = self.depth().checked_sub(usize::from(out))?;
         for depth in (0..=start).rev() {
             if other.pos <= self.end(depth) && pred.is_none_or(|p| p(self.node(depth))) {
                 return Some(NodeRange {

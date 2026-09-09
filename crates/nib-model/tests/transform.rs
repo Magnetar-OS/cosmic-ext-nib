@@ -280,7 +280,7 @@ fn steps_that_are_not_adjacent_do_not_merge() {
 fn a_transform_records_what_it_did_and_can_take_it_back() {
     let b = b();
     let doc = two_paragraphs();
-    let mut tr = Transform::new(doc.clone());
+    let mut tr = Transform::new(basic::schema(), doc.clone());
     tr.delete(2, 3).unwrap();
     tr.replace(2, 2, Slice::new(Fragment::from(b.text("XY")), 0, 0))
         .unwrap();
@@ -301,7 +301,7 @@ fn a_transform_records_what_it_did_and_can_take_it_back() {
 #[test]
 fn a_transform_maps_a_position_across_everything_it_did() {
     let b = b();
-    let mut tr = Transform::new(two_paragraphs());
+    let mut tr = Transform::new(basic::schema(), two_paragraphs());
     tr.replace(1, 1, Slice::new(Fragment::from(b.text("XX")), 0, 0))
         .unwrap();
     tr.replace(3, 3, Slice::new(Fragment::from(b.text("YY")), 0, 0))
@@ -312,7 +312,7 @@ fn a_transform_maps_a_position_across_everything_it_did() {
 
 #[test]
 fn a_step_that_does_not_apply_leaves_the_transform_alone() {
-    let mut tr = Transform::new(two_paragraphs());
+    let mut tr = Transform::new(basic::schema(), two_paragraphs());
     // Deleting every block would leave `doc` — which is `block+` — empty.
     let err = tr.delete(0, 10).unwrap_err();
     assert!(!tr.doc_changed(), "a failed step must change nothing: {err}");

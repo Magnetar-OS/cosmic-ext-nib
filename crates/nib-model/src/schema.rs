@@ -411,6 +411,14 @@ impl NodeType {
         marks.iter().all(|m| self.allows_mark_type(m.typ().id()))
     }
 
+    /// True when `content` is legal for this type, start to finish.
+    #[must_use]
+    pub fn valid_content(&self, content: &Fragment) -> bool {
+        self.content_match()
+            .match_fragment(content)
+            .is_some_and(|m| m.valid_end())
+    }
+
     /// True when the two types' contents are interchangeable enough to join.
     #[must_use]
     pub fn is_compatible_content(&self, other: &Self) -> bool {

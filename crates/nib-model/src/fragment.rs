@@ -196,6 +196,23 @@ impl Fragment {
         Self::from_vec(result)
     }
 
+    /// The children from `from` to `to`, counted as indices rather than
+    /// positions.
+    ///
+    /// # Panics
+    ///
+    /// If the indices are out of range.
+    #[must_use]
+    pub fn cut_by_index(&self, from: usize, to: usize) -> Self {
+        if from == to {
+            return Self::empty();
+        }
+        if from == 0 && to == self.content.len() {
+            return self.clone();
+        }
+        Self::from_vec(self.content[from..to].to_vec())
+    }
+
     /// Adds a node at the front, merging with the first child when both are
     /// text with the same markup.
     #[must_use]

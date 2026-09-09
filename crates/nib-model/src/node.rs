@@ -374,6 +374,18 @@ impl Node {
 
     // -- schema questions --------------------------------------------------
 
+    /// A content-match cursor positioned after this node's first `index`
+    /// children — what may legally follow them.
+    ///
+    /// Returns `None` when the children up to `index` are already invalid,
+    /// which cannot happen in a document the steps built.
+    #[must_use]
+    pub fn content_match_at(&self, index: usize) -> Option<crate::content::ContentMatch> {
+        self.typ
+            .content_match()
+            .match_fragment_range(&self.content, 0, index)
+    }
+
     /// True when `marks` may all be applied to a node of this type here.
     #[must_use]
     pub fn allows_marks(&self, marks: &Marks) -> bool {
@@ -537,9 +549,13 @@ impl fmt::Display for Node {
             return Ok(());
         }
         write!(f, "{}", self.typ.name())?;
-        if !self.attrs.is_empty() {
+        // Null attributes are skipped: an unset `alt` or `language` is noise in
+        // a shape, and every node carrying one would drown the structure this
+        // is here to show. `Debug` keeps them.
+        let mut set = self.attrs.iter().filter(|(_, v)| !v.is_null()).peekable();
+        if set.peek().is_some() {
             f.write_str("[")?;
-            for (i, (name, value)) in self.attrs.iter().enumerate() {
+            for (i, (name, value)) in set.enumerate() {
                 if i > 0 {
                     f.write_str(", ")?;
                 }

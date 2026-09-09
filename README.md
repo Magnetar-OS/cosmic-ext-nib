@@ -96,10 +96,11 @@ opaque island. The two meet at the HTML serialiser, not in the layout engine.
 
 `nib-model` is written and tested: schema and content-expression compiler, the
 node tree, marks, position resolution, slices, the replace algorithm, position
-mapping, and the step set. 92 tests, no warnings under `clippy --all-targets`.
+mapping, the step set, and the structural edits (`split`, `join`, `lift`,
+`wrap`, `set_block_type`, `set_node_markup`, `clear_incompatible`, `add_mark`,
+`remove_mark`). 112 tests, no warnings under `clippy --all-targets`.
 
-Still to come, in order: the structural helpers (`split`, `join`, `lift`,
-`wrap`, `set_block_type`) and the slice fitter that paste needs; editor state,
+Still to come, in order: the slice fitter that paste needs; editor state,
 selections and plugins; history, commands, keymaps and input rules; the
 extension API; the HTML, Markdown and text serialisers; and the widget.
 
