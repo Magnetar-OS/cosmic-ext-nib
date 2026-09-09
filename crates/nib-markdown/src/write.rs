@@ -57,7 +57,7 @@ impl Writer<'_> {
     /// Writes a run of block nodes, one blank line apart.
     fn blocks(&self, parent: &Node, out: &mut String) {
         for (i, child) in parent.content().into_iter().enumerate() {
-            if i > 0 && !self.tight_after(parent, i) {
+            if i > 0 && !Self::tight_after(parent, i) {
                 out.push('\n');
             }
             self.block(child, out);
@@ -69,7 +69,7 @@ impl Writer<'_> {
     /// A list nested under a paragraph in a list item is the case: a blank
     /// line there makes the list loose, which re-parses as a different
     /// document and renders with different spacing.
-    fn tight_after(&self, parent: &Node, index: usize) -> bool {
+    fn tight_after(parent: &Node, index: usize) -> bool {
         use nib_model::basic::nodes;
         let Some(node) = parent.child(index) else {
             return false;

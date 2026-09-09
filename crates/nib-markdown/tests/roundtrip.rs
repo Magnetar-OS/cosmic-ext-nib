@@ -22,10 +22,6 @@ fn round(md: &Markdown, input: &str) -> String {
     md.to_markdown(&md.parse(input))
 }
 
-fn shape(md: &Markdown, input: &str) -> String {
-    md.parse(input).to_string()
-}
-
 // ---------------------------------------------------------------------------
 // CommonMark
 // ---------------------------------------------------------------------------
@@ -161,7 +157,7 @@ fn markdown_around_an_mdc_component_is_still_markdown() {
     let md = components(Dialect::Mdc);
     let doc = md.parse("# Before\n\n::card\ninner\n::\n\nAfter.\n");
     assert_eq!(doc.check(), Ok(()));
-    let names: Vec<&str> = doc.content().iter().map(|n| n.type_name()).collect();
+    let names: Vec<&str> = doc.content().iter().map(nib_model::Node::type_name).collect();
     assert_eq!(names, ["heading", "component_block", "paragraph"]);
 }
 
