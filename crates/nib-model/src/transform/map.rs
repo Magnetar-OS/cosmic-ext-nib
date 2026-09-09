@@ -183,6 +183,27 @@ impl StepMap {
         usize::try_from(start as isize + diff).unwrap_or(0) + recover.offset
     }
 
+    /// Calls `f` for each replaced range, with its old and new bounds.
+    ///
+    /// What a caller needs to find where inserted content ended up — the
+    /// cursor after a paste goes to the end of the first new range.
+    pub fn for_each(&self, mut f: impl FnMut(usize, usize, usize, usize)) {
+        let mut diff: isize = 0;
+        for range in &self.ranges {
+            let (old_size, new_size) = if self.inverted {
+                (range.new_size, range.old_size)
+            } else {
+                (range.old_size, range.new_size)
+            };
+            let start = usize::try_from(range.start as isize - if self.inverted { diff } else { 0 })
+                .unwrap_or(0);
+            let new_start = usize::try_from(range.start as isize + if self.inverted { 0 } else { diff })
+                .unwrap_or(0);
+            f(start, start + old_size, new_start, new_start + new_size);
+            diff += new_size as isize - old_size as isize;
+        }
+    }
+
     /// Maps a position, discarding the detail.
     #[must_use]
     pub fn map(&self, pos: usize, assoc: i32) -> usize {

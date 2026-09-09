@@ -374,6 +374,23 @@ impl Node {
 
     // -- schema questions --------------------------------------------------
 
+    /// True when every inline node between `from` and `to` carries a mark of
+    /// this type. What decides whether a toggle turns the mark on or off.
+    #[must_use]
+    pub fn range_has_mark(&self, from: usize, to: usize, mark: crate::schema::MarkTypeId) -> bool {
+        let mut found = false;
+        self.nodes_between(from, to, &mut |node, _, _, _| {
+            if found || !node.is_inline() {
+                return true;
+            }
+            if node.marks().iter().any(|m| m.typ().id() == mark) {
+                found = true;
+            }
+            true
+        });
+        found
+    }
+
     /// A content-match cursor positioned after this node's first `index`
     /// children — what may legally follow them.
     ///

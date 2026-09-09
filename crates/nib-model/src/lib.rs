@@ -48,14 +48,18 @@
 pub mod attrs;
 pub mod basic;
 pub mod build;
+pub mod commands;
 pub mod content;
 pub mod fragment;
+pub mod history;
+pub mod keymap;
 pub mod mark;
 pub mod node;
 pub mod replace;
 pub mod resolve;
 pub mod schema;
 pub mod slice;
+pub mod state;
 pub mod transform;
 
 pub use attrs::{Attrs, Value};
@@ -67,6 +71,9 @@ pub use node::Node;
 pub use replace::ReplaceError;
 pub use resolve::{NodeRange, ResolvedPos};
 pub use slice::Slice;
+pub use commands::Command;
+pub use keymap::{Binding, Key, Keymap, Mods};
+pub use state::{EditorState, Plugin, PluginKey, Selection, Transaction};
 pub use schema::{
     AttrSpec, MarkSpec, MarkType, MarkTypeId, NodeSpec, NodeType, NodeTypeId, Schema, SchemaError,
 };

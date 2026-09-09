@@ -392,6 +392,16 @@ pub struct NodeRange {
 }
 
 impl NodeRange {
+    /// A range over the children of the node at `depth`, spanned by two
+    /// positions.
+    ///
+    /// Prefer [`ResolvedPos::block_range`], which finds the depth; this is for
+    /// commands that already know which one they want.
+    #[must_use]
+    pub fn new(from: ResolvedPos, to: ResolvedPos, depth: usize) -> Self {
+        Self { from, to, depth }
+    }
+
     #[must_use]
     pub fn from(&self) -> &ResolvedPos {
         &self.from
