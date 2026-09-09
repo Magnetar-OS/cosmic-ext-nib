@@ -1,0 +1,24 @@
+[package]
+name = "cosmic-ext-nib-model"
+description = "The document model behind Nib: schema, positions, steps, transactions"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+
+# Short in code, prefixed on crates.io. `nib` is taken there by an unrelated
+# crate, and squatting adjacent names to get a nicer `use` line is not worth
+# the confusion it buys.
+[lib]
+name = "nib_model"
+path = "src/lib.rs"
+
+[dependencies]
+thiserror.workspace = true
+regex.workspace = true
+unicode-segmentation.workspace = true
+
+[lints]
+workspace = true
