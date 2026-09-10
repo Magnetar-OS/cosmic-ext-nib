@@ -94,13 +94,18 @@ opaque island. The two meet at the HTML serialiser, not in the layout engine.
 
 ## State
 
-All five crates are written and tested, at 252 tests with no warnings under
+All five crates are written and tested, at 329 tests with no warnings under
 pedantic clippy.
 
 **`nib-model`** — schema and content-expression compiler, the node tree, marks,
 position resolution, slices, the replace algorithm, the slice fitter, position
 mapping, the step set, structural edits, editor state, selections, plugins,
-history, commands, keymaps, input rules and decorations.
+history, commands, keymaps, input rules and decorations. `motion` answers the
+questions that depend only on the document — a grapheme, a word, a line, the
+block before — leaving the view only the ones about where the shaper wrapped.
+`vim` is the modal state machine those motions are for: a keymap cannot hold a
+mode, a half-typed count or a pending operator, so this does, and it sits in
+front of the keymap rather than replacing it.
 
 **`nib-html`** — html5ever in, tags out, one rule table serving both.
 
@@ -114,18 +119,32 @@ signature starts.
 **`nib`** — the widget. One widget rather than a tree of them, because a
 selection runs from a position in one block to a position in another. Text
 layout, shaping, hit testing and caret geometry come from iced's `Paragraph`,
-which is `cosmic-text` underneath. The caret glides rather than teleports,
+which is `cosmic-text` underneath. Shaping is the expensive part, so a
+keystroke does not repeat it: `blocks::reusable` asks the document where it
+changed — cheap, because two fragments that were never edited apart share a
+pointer — and only the blocks the edit reached are laid out again. Measured on
+a 180 KB document, that is 84 ms of shaping per keystroke down to 64 µs
+(`cargo run --release --example relayout 1500`). The caret glides rather than teleports,
 stops blinking while you type, and wakes twice a second rather than sixty
-times.
+times. It takes an `Id` and implements iced's focus operation, so `nib::focus`
+puts the caret in it without the user clicking first, and a `placeholder` is
+drawn — not inserted — while the document is empty, so there is nothing in it
+to select, serialise or send. `read_only` turns it into a reader: selection,
+motion, copy and links still work, and every transaction that would change the
+document is refused at the one place they all pass through.
+
+An image never loads. There is no image loader, and an `image` node draws its
+alt text — `[Quarterly chart]` — or a replacement character when it has none.
+That is what lets a document from an untrusted source be shown at all: the
+schema is the allow-list, and nothing in it resolves a URL.
 
 ```
 cargo run --example notebook
 ```
 
-Still to come: table cells are laid out as a stack rather than a grid, IME
-preedit is not yet drawn, and the clipboard carries plain text rather than
-HTML — the structured slice is kept alongside so a paste back into the same
-application keeps its structure.
+Still to come: the clipboard carries plain text rather than HTML — the
+structured slice is kept alongside, so a paste back into the same application
+keeps its structure, but a paste into another one arrives flat.
 
 ## Building
 
