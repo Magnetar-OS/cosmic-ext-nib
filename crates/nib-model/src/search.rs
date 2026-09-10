@@ -85,6 +85,16 @@ impl Query {
     pub fn source(&self) -> &str {
         &self.source
     }
+
+    /// Every match in a plain string, as byte ranges.
+    ///
+    /// The same rules as [`find`], applied to text that is not a document —
+    /// a file on the way to being opened, say. Searching a folder and
+    /// searching the document open in front of you should agree about what
+    /// counts as a match, and this is how they do.
+    pub fn matches<'t>(&'t self, text: &'t str) -> impl Iterator<Item = (usize, usize)> + 't {
+        self.pattern.find_iter(text).map(|m| (m.start(), m.end()))
+    }
 }
 
 /// One match: a range of document positions.
