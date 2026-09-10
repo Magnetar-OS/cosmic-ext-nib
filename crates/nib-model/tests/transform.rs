@@ -30,7 +30,10 @@ fn round_trips(doc: &Node, step: &Step) -> Node {
         .invert(doc)
         .apply(&after)
         .expect("the inverse should apply");
-    assert_eq!(back, *doc, "inverting {step:?} did not restore the document");
+    assert_eq!(
+        back, *doc,
+        "inverting {step:?} did not restore the document"
+    );
     after
 }
 
@@ -57,7 +60,9 @@ fn an_insertion_inverts_to_a_deletion() {
 #[test]
 fn a_split_inverts_to_a_join() {
     let b = b();
-    let doc = b.doc(nodes![b.node(nodes::PARAGRAPH, nodes![b.text("hello world")])]);
+    let doc = b.doc(nodes![
+        b.node(nodes::PARAGRAPH, nodes![b.text("hello world")])
+    ]);
     let slice = Slice::new(
         Fragment::from_vec(vec![
             b.node(nodes::PARAGRAPH, nodes![]),
@@ -83,10 +88,7 @@ fn a_mark_step_inverts_to_its_opposite() {
             mark: strong,
         },
     );
-    assert_eq!(
-        after.to_string(),
-        r#"doc(paragraph(strong("hel"), "lo"))"#
-    );
+    assert_eq!(after.to_string(), r#"doc(paragraph(strong("hel"), "lo"))"#);
 }
 
 #[test]
@@ -128,7 +130,9 @@ fn a_gap_replace_wrapping_a_paragraph_inverts_to_unwrapping_it() {
         to: doc.content_size(),
         gap_from: 0,
         gap_to: doc.content_size(),
-        slice: Slice::new(Fragment::from(quote), 0, 0).remove_between(1, 3).unwrap(),
+        slice: Slice::new(Fragment::from(quote), 0, 0)
+            .remove_between(1, 3)
+            .unwrap(),
         insert: 1,
         structure: true,
     };
@@ -246,7 +250,10 @@ fn consecutive_typing_merges_into_one_step() {
     let first = Step::replace(1, 1, Slice::new(Fragment::from(b.text("a")), 0, 0));
     let second = Step::replace(2, 2, Slice::new(Fragment::from(b.text("b")), 0, 0));
     let merged = first.merge(&second).expect("adjacent insertions merge");
-    let Step::Replace { from, to, slice, .. } = &merged else {
+    let Step::Replace {
+        from, to, slice, ..
+    } = &merged
+    else {
         panic!("expected a replace");
     };
     assert_eq!((*from, *to), (1, 1));
@@ -315,7 +322,10 @@ fn a_step_that_does_not_apply_leaves_the_transform_alone() {
     let mut tr = Transform::new(basic::schema(), two_paragraphs());
     // Deleting every block would leave `doc` — which is `block+` — empty.
     let err = tr.delete(0, 10).unwrap_err();
-    assert!(!tr.doc_changed(), "a failed step must change nothing: {err}");
+    assert!(
+        !tr.doc_changed(),
+        "a failed step must change nothing: {err}"
+    );
 }
 
 #[test]

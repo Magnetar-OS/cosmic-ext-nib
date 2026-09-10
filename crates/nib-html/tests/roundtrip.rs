@@ -230,7 +230,10 @@ fn pasted_inline_html_is_an_inline_slice() {
     let slice = html().parse_slice("some <strong>text</strong>");
     assert_eq!(slice.content().child_count(), 2);
     assert!(
-        slice.content().child(0).is_some_and(nib_model::Node::is_text),
+        slice
+            .content()
+            .child(0)
+            .is_some_and(nib_model::Node::is_text),
         "inline HTML should not arrive wrapped in a block"
     );
 }
@@ -239,7 +242,12 @@ fn pasted_inline_html_is_an_inline_slice() {
 fn pasted_block_html_is_a_block_slice() {
     let slice = html().parse_slice("<p>one</p><p>two</p>");
     assert_eq!(slice.content().child_count(), 2);
-    assert!(slice.content().child(0).is_some_and(nib_model::Node::is_block));
+    assert!(
+        slice
+            .content()
+            .child(0)
+            .is_some_and(nib_model::Node::is_block)
+    );
 }
 
 #[test]

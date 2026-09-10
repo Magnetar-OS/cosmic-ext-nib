@@ -44,9 +44,9 @@ fn a_keyword_is_marked_as_one() {
     let found = classes(&doc);
     // The code block's text starts at position 1.
     assert!(
-        found.iter().any(|(from, to, class)| {
-            *from == 1 && *to == 3 && class == "keyword"
-        }),
+        found
+            .iter()
+            .any(|(from, to, class)| { *from == 1 && *to == 3 && class == "keyword" }),
         "expected `fn` to be a keyword: {found:?}"
     );
 }
@@ -66,7 +66,10 @@ fn every_decoration_lands_inside_the_block() {
     let block = doc.child(0).expect("the code block");
     let (from, to) = (1, 1 + block.content_size());
     for (a, b, class) in classes(&doc) {
-        assert!(a >= from && b <= to, "{class} at {a}..{b} escaped {from}..{to}");
+        assert!(
+            a >= from && b <= to,
+            "{class} at {a}..{b} escaped {from}..{to}"
+        );
         assert!(a < b, "{class} at {a}..{b} is empty");
     }
 }
@@ -102,7 +105,9 @@ fn an_extension_works_as_well_as_a_name() {
 #[test]
 fn a_block_with_no_language_is_left_alone() {
     let b = b();
-    let doc = b.doc(nodes![b.node(nodes::CODE_BLOCK, nodes![b.text("fn main() {}")])]);
+    let doc = b.doc(nodes![
+        b.node(nodes::CODE_BLOCK, nodes![b.text("fn main() {}")])
+    ]);
     assert!(classes(&doc).is_empty(), "a guess is worse than no colour");
 }
 
@@ -139,9 +144,15 @@ fn two_code_blocks_are_both_highlighted_in_their_own_coordinates() {
     ]);
     let found = classes(&doc);
     let first = doc.child(0).expect("first").node_size();
-    assert!(found.iter().any(|(from, _, c)| *from == 1 && c == "keyword"));
     assert!(
-        found.iter().any(|(from, _, c)| *from == first + 1 && c == "keyword"),
+        found
+            .iter()
+            .any(|(from, _, c)| *from == 1 && c == "keyword")
+    );
+    assert!(
+        found
+            .iter()
+            .any(|(from, _, c)| *from == first + 1 && c == "keyword"),
         "the second block's offsets start after the first: {found:?}"
     );
 }

@@ -60,20 +60,18 @@ fn a_list_is_bulleted() {
             nodes![b.node(nodes::PARAGRAPH, nodes![b.text(t)])],
         )
     };
-    let doc = b.doc(nodes![b.node(
-        nodes::BULLET_LIST,
-        nodes![item("one"), item("two")]
-    )]);
+    let doc = b.doc(nodes![
+        b.node(nodes::BULLET_LIST, nodes![item("one"), item("two")])
+    ]);
     assert_eq!(text().to_text(&doc), "- one\n- two");
 }
 
 #[test]
 fn a_code_block_is_indented_not_fenced() {
     let b = b();
-    let doc = b.doc(nodes![b.node(
-        nodes::CODE_BLOCK,
-        nodes![b.text("fn main() {}")]
-    )]);
+    let doc = b.doc(nodes![
+        b.node(nodes::CODE_BLOCK, nodes![b.text("fn main() {}")])
+    ]);
     assert_eq!(
         text().to_text(&doc),
         "    fn main() {}",
@@ -134,10 +132,9 @@ fn a_word_longer_than_the_column_is_left_long() {
 fn the_default_wrap_leaves_room_to_be_quoted_twice() {
     let b = b();
     let long = "word ".repeat(30);
-    let doc = b.doc(nodes![b.node(
-        nodes::PARAGRAPH,
-        nodes![b.text(long.trim())]
-    )]);
+    let doc = b.doc(nodes![
+        b.node(nodes::PARAGRAPH, nodes![b.text(long.trim())])
+    ]);
     let out = text().to_text(&doc);
     assert!(out.lines().all(|l| l.chars().count() <= 72), "{out}");
     // Two rounds of quoting still fit inside 78.
@@ -260,7 +257,9 @@ fn plain_text_is_not_read_as_markdown() {
 fn wrapping_is_optional() {
     let b = b();
     let long = "word ".repeat(40);
-    let doc = b.doc(nodes![b.node(nodes::PARAGRAPH, nodes![b.text(long.trim())])]);
+    let doc = b.doc(nodes![
+        b.node(nodes::PARAGRAPH, nodes![b.text(long.trim())])
+    ]);
     let unwrapped = Text::with_options(
         &basic::schema(),
         Options {

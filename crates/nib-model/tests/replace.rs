@@ -46,7 +46,11 @@ fn a_position_knows_its_ancestors_and_where_it_sits_in_each() {
 fn a_position_on_a_node_boundary_has_no_text_offset() {
     let doc = two_paragraphs();
     let between = doc.resolve(5);
-    assert_eq!(between.depth(), 0, "between the paragraphs, directly in the doc");
+    assert_eq!(
+        between.depth(),
+        0,
+        "between the paragraphs, directly in the doc"
+    );
     assert_eq!(between.text_offset(), 0);
     assert_eq!(between.index(0), 1);
     assert_eq!(between.node_before().unwrap().text_content(), "one");
@@ -124,7 +128,9 @@ fn a_slices_size_excludes_the_boundaries_it_will_not_insert() {
 #[test]
 fn deleting_inside_one_text_node_shortens_it() {
     let b = b();
-    let doc = b.doc(nodes![b.node(nodes::PARAGRAPH, nodes![b.text("hello world")])]);
+    let doc = b.doc(nodes![
+        b.node(nodes::PARAGRAPH, nodes![b.text("hello world")])
+    ]);
     let after = doc.delete(3, 5).unwrap();
     assert_eq!(after.text_content(), "heo world");
     assert_eq!(after.check(), Ok(()));
@@ -153,7 +159,10 @@ fn deleting_everything_leaves_the_document_valid() {
     // must leave a block behind. The model says so rather than producing an
     // invalid document.
     let err = doc.delete(0, doc.content_size()).unwrap_err();
-    assert!(matches!(err, ReplaceError::InvalidContent { .. }), "{err:?}");
+    assert!(
+        matches!(err, ReplaceError::InvalidContent { .. }),
+        "{err:?}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -190,7 +199,9 @@ fn inserting_a_whole_block_between_two_others() {
 #[test]
 fn splitting_a_paragraph_is_a_replace_with_an_open_slice() {
     let b = b();
-    let doc = b.doc(nodes![b.node(nodes::PARAGRAPH, nodes![b.text("hello world")])]);
+    let doc = b.doc(nodes![
+        b.node(nodes::PARAGRAPH, nodes![b.text("hello world")])
+    ]);
     // Two empty paragraphs, both edges open: the left one joins what precedes
     // the caret, the right one what follows.
     let slice = Slice::new(
@@ -304,10 +315,9 @@ fn deleting_across_list_items_joins_them() {
             nodes![b.node(nodes::PARAGRAPH, nodes![b.text(text)])],
         )
     };
-    let doc = b.doc(nodes![b.node(
-        nodes::BULLET_LIST,
-        nodes![item("one"), item("two")]
-    )]);
+    let doc = b.doc(nodes![
+        b.node(nodes::BULLET_LIST, nodes![item("one"), item("two")])
+    ]);
     // doc 0 <ul> 1 <li> 2 <p> 3 "one" 6 </p> 7 </li> 8 <li> 9 <p> 10 "two" ...
     let after = doc.delete(4, 11).unwrap();
     assert_eq!(
@@ -328,5 +338,8 @@ fn text_keeps_its_marks_through_a_replace() {
         ]
     )]);
     let after = doc.delete(1, 4).unwrap();
-    assert_eq!(after.to_string(), r#"doc(paragraph("in ", strong("bold")))"#);
+    assert_eq!(
+        after.to_string(),
+        r#"doc(paragraph("in ", strong("bold")))"#
+    );
 }

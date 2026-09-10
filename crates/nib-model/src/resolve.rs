@@ -334,7 +334,8 @@ impl ResolvedPos {
     /// True when two positions sit directly in the same node.
     #[must_use]
     pub fn same_parent(&self, other: &Self) -> bool {
-        self.depth() == other.depth() && self.pos - self.parent_offset == other.pos - other.parent_offset
+        self.depth() == other.depth()
+            && self.pos - self.parent_offset == other.pos - other.parent_offset
     }
 
     /// The range of sibling blocks spanned by this position and `other`,

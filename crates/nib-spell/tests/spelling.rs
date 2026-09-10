@@ -44,27 +44,27 @@ fn words(speller: &Speller, doc: &Node) -> Vec<String> {
 #[test]
 fn a_known_word_gets_no_squiggle() {
     let b = b();
-    let doc = b.doc(nodes![b.node(nodes::PARAGRAPH, nodes![b.text("hello world")])]);
+    let doc = b.doc(nodes![
+        b.node(nodes::PARAGRAPH, nodes![b.text("hello world")])
+    ]);
     assert!(misspellings(&speller(), &doc).is_empty());
 }
 
 #[test]
 fn an_unknown_word_gets_one() {
     let b = b();
-    let doc = b.doc(nodes![b.node(
-        nodes::PARAGRAPH,
-        nodes![b.text("hello wrold")]
-    )]);
+    let doc = b.doc(nodes![
+        b.node(nodes::PARAGRAPH, nodes![b.text("hello wrold")])
+    ]);
     assert_eq!(words(&speller(), &doc), ["wrold"]);
 }
 
 #[test]
 fn the_squiggle_covers_the_word_and_nothing_else() {
     let b = b();
-    let doc = b.doc(nodes![b.node(
-        nodes::PARAGRAPH,
-        nodes![b.text("hello wrold there")]
-    )]);
+    let doc = b.doc(nodes![
+        b.node(nodes::PARAGRAPH, nodes![b.text("hello wrold there")])
+    ]);
     let found = misspellings(&speller(), &doc);
     assert_eq!(found.len(), 2, "wrold and there: {found:?}");
     // "hello" starts at position 1; "wrold" is six bytes later.
@@ -115,7 +115,9 @@ fn things_that_are_not_words_are_left_alone() {
 #[test]
 fn a_learnt_word_stops_being_a_misspelling() {
     let b = b();
-    let doc = b.doc(nodes![b.node(nodes::PARAGRAPH, nodes![b.text("hello zzzz")])]);
+    let doc = b.doc(nodes![
+        b.node(nodes::PARAGRAPH, nodes![b.text("hello zzzz")])
+    ]);
     let mut speller = speller();
     assert_eq!(words(&speller, &doc), ["zzzz"]);
 
@@ -130,10 +132,9 @@ fn a_learnt_word_stops_being_a_misspelling() {
 #[test]
 fn the_word_under_a_position_is_found_with_its_range() {
     let b = b();
-    let doc = b.doc(nodes![b.node(
-        nodes::PARAGRAPH,
-        nodes![b.text("hello wrold")]
-    )]);
+    let doc = b.doc(nodes![
+        b.node(nodes::PARAGRAPH, nodes![b.text("hello wrold")])
+    ]);
     let speller = speller();
     // Inside "wrold".
     let (word, from, to) = speller.word_at(&doc, 9).expect("a misspelling there");

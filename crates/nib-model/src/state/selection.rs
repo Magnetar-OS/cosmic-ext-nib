@@ -318,7 +318,11 @@ fn find_selection_in(
         let child = node.child(i.cast_unsigned())?;
         if child.is_atom() {
             if !text_only && child.typ().spec().selectable {
-                let at = if dir < 0 { pos - child.node_size() } else { pos };
+                let at = if dir < 0 {
+                    pos - child.node_size()
+                } else {
+                    pos
+                };
                 if let Some(selection) = Selection::node(doc, at) {
                     return Some(selection);
                 }

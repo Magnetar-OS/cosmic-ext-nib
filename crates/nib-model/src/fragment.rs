@@ -169,7 +169,11 @@ impl Fragment {
     /// character.
     #[must_use]
     pub fn cut(&self, from: usize, to: usize) -> Self {
-        assert!(from <= to && to <= self.size, "cut {from}..{to} out of range for fragment of {}", self.size);
+        assert!(
+            from <= to && to <= self.size,
+            "cut {from}..{to} out of range for fragment of {}",
+            self.size
+        );
         if from == 0 && to == self.size {
             return self.clone();
         }
@@ -262,7 +266,11 @@ impl Fragment {
     /// If `pos` is out of range.
     #[must_use]
     pub fn find_index_round(&self, pos: usize, round: i32) -> (usize, usize) {
-        assert!(pos <= self.size, "position {pos} out of range for fragment of {}", self.size);
+        assert!(
+            pos <= self.size,
+            "position {pos} out of range for fragment of {}",
+            self.size
+        );
         if pos == 0 {
             return (0, 0);
         }
@@ -381,11 +389,7 @@ impl Fragment {
                     }
                     if a.is_text() {
                         let (x, y) = (a.text().unwrap_or(""), b.text().unwrap_or(""));
-                        let shared = x
-                            .bytes()
-                            .zip(y.bytes())
-                            .take_while(|(p, q)| p == q)
-                            .count();
+                        let shared = x.bytes().zip(y.bytes()).take_while(|(p, q)| p == q).count();
                         // Never split a character: walk back to a boundary.
                         let mut shared = shared;
                         while shared > 0 && !x.is_char_boundary(shared) {
@@ -451,9 +455,7 @@ impl Fragment {
                 return Some((pos_a - same, pos_b - same));
             }
             if (a.content_size() > 0 || b.content_size() > 0)
-                && let Some(inner) = a
-                    .content()
-                    .find_diff_end(b.content(), pos_a - 1, pos_b - 1)
+                && let Some(inner) = a.content().find_diff_end(b.content(), pos_a - 1, pos_b - 1)
             {
                 return Some(inner);
             }

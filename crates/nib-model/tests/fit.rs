@@ -48,7 +48,9 @@ fn list(items: &[&str]) -> Node {
 #[test]
 fn pasting_a_paragraph_into_a_paragraph_splits_it() {
     let b = b();
-    let doc = b.doc(nodes![b.node(nodes::PARAGRAPH, nodes![b.text("hello world")])]);
+    let doc = b.doc(nodes![
+        b.node(nodes::PARAGRAPH, nodes![b.text("hello world")])
+    ]);
     let source = b.doc(nodes![b.node(nodes::PARAGRAPH, nodes![b.text("NEW")])]);
     let mut tr = tr(doc);
     tr.replace_fitted(6, 6, whole(&source)).unwrap();
@@ -62,7 +64,9 @@ fn pasting_a_paragraph_into_a_paragraph_splits_it() {
 #[test]
 fn pasting_a_list_into_a_paragraph_keeps_the_list() {
     let b = b();
-    let doc = b.doc(nodes![b.node(nodes::PARAGRAPH, nodes![b.text("hello world")])]);
+    let doc = b.doc(nodes![
+        b.node(nodes::PARAGRAPH, nodes![b.text("hello world")])
+    ]);
     let source = list(&["one", "two"]);
     let mut tr = tr(doc);
     tr.replace_fitted(6, 6, whole(&source)).unwrap();
@@ -78,7 +82,9 @@ list_item(paragraph("two"))), paragraph(" world"))"#
 #[test]
 fn pasting_inline_content_stays_inline() {
     let b = b();
-    let doc = b.doc(nodes![b.node(nodes::PARAGRAPH, nodes![b.text("hello world")])]);
+    let doc = b.doc(nodes![
+        b.node(nodes::PARAGRAPH, nodes![b.text("hello world")])
+    ]);
     let source = b.doc(nodes![b.node(nodes::PARAGRAPH, nodes![b.text("NEW")])]);
     // An open slice: the tail of a paragraph, not a paragraph.
     let mut tr = tr(doc);
@@ -149,7 +155,8 @@ fn pasting_inline_content_between_list_items_wraps_it_into_an_item() {
     let source = b.doc(nodes![b.node(nodes::PARAGRAPH, nodes![b.text("X")])]);
     let at = doc.resolve(2).after(2);
     let mut tr = tr(doc);
-    tr.replace_fitted(at, at, source.slice(1, 2, false)).unwrap();
+    tr.replace_fitted(at, at, source.slice(1, 2, false))
+        .unwrap();
     assert_eq!(tr.doc().check(), Ok(()));
     assert_eq!(
         tr.doc().to_string(),
@@ -250,7 +257,10 @@ fn deleting_across_whole_blocks_removes_them() {
     let mut tr = tr(doc);
     tr.delete_range(1, 9).unwrap();
     assert_eq!(tr.doc().check(), Ok(()));
-    assert_eq!(tr.doc().to_string(), r#"doc(paragraph, paragraph("three"))"#);
+    assert_eq!(
+        tr.doc().to_string(),
+        r#"doc(paragraph, paragraph("three"))"#
+    );
 }
 
 #[test]
@@ -298,7 +308,11 @@ fn every_fitted_paste_leaves_a_valid_document() {
     // boundary of another, must produce something the schema accepts.
     let b = b();
     let source = b.doc(nodes![
-        b.attr_node(nodes::HEADING, &attrs! { "level" => 1_i64 }, nodes![b.text("H")]),
+        b.attr_node(
+            nodes::HEADING,
+            &attrs! { "level" => 1_i64 },
+            nodes![b.text("H")]
+        ),
         b.node(nodes::PARAGRAPH, nodes![b.text("para")]),
         b.node(
             nodes::BULLET_LIST,

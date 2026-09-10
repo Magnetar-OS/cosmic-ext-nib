@@ -218,11 +218,7 @@ impl Writer<'_> {
                 .filter_map(|m| delimiter(m.name()).map(str::to_owned))
                 .collect();
 
-            let shared = open
-                .iter()
-                .zip(&wanted)
-                .take_while(|(a, b)| a == b)
-                .count();
+            let shared = open.iter().zip(&wanted).take_while(|(a, b)| a == b).count();
             while open.len() > shared {
                 if let Some(delim) = open.pop() {
                     out.push_str(&delim);
@@ -235,7 +231,9 @@ impl Writer<'_> {
 
             // A link's brackets sit outside its delimiters and carry a target,
             // so they are written around the run rather than as a delimiter.
-            let link = marks.iter().find(|m| m.name() == nib_model::basic::marks::LINK);
+            let link = marks
+                .iter()
+                .find(|m| m.name() == nib_model::basic::marks::LINK);
             if let Some(link) = link {
                 out.push('[');
                 self.inline_node(child, &mut out);

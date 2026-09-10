@@ -228,7 +228,10 @@ impl Attrs {
         if self.get(&name) == Some(&value) {
             return self.clone();
         }
-        let mut map = self.0.as_ref().map_or_else(BTreeMap::new, |m| (**m).clone());
+        let mut map = self
+            .0
+            .as_ref()
+            .map_or_else(BTreeMap::new, |m| (**m).clone());
         map.insert(name, value);
         Self(Some(Arc::new(map)))
     }
@@ -239,7 +242,10 @@ impl Attrs {
         if self.get(name).is_none() {
             return self.clone();
         }
-        let mut map = self.0.as_ref().map_or_else(BTreeMap::new, |m| (**m).clone());
+        let mut map = self
+            .0
+            .as_ref()
+            .map_or_else(BTreeMap::new, |m| (**m).clone());
         map.remove(name);
         if map.is_empty() {
             return Self::none();
@@ -249,9 +255,7 @@ impl Attrs {
 
     /// Iterates in name order.
     pub fn iter(&self) -> impl Iterator<Item = (&str, &Value)> {
-        self.0
-            .iter()
-            .flat_map(|m| m.iter().map(|(k, v)| (&**k, v)))
+        self.0.iter().flat_map(|m| m.iter().map(|(k, v)| (&**k, v)))
     }
 }
 

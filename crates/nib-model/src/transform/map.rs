@@ -381,10 +381,7 @@ impl Mapping {
         let base = self.maps.len() + other.maps.len() - 1;
         while i > 0 {
             i -= 1;
-            let mirror = other
-                .get_mirror(i)
-                .filter(|m| *m > i)
-                .map(|m| base - m);
+            let mirror = other.get_mirror(i).filter(|m| *m > i).map(|m| base - m);
             self.append_map(other.maps[i].invert(), mirror);
         }
     }
