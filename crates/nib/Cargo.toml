@@ -7,6 +7,12 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 authors.workspace = true
+# Not on crates.io, and not by choice: this crate depends on libcosmic, which
+# is only published as a git repository. crates.io rejects git dependencies, so
+# the widget can only be consumed the way every COSMIC application consumes
+# libcosmic itself — by git. The crates below it, which know nothing about a
+# toolkit, are published normally.
+publish = false
 
 [lib]
 name = "nib"
