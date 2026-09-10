@@ -143,6 +143,18 @@ pub struct Style {
     pub body_font: Font,
     pub mono_font: Font,
     pub caret: Caret,
+    /// Whether code blocks get a gutter of line numbers.
+    ///
+    /// Only code blocks: numbering prose is numbering something that has no
+    /// lines until it is laid out, and a number that changes when the window
+    /// is resized is not a reference anybody can use.
+    pub line_numbers: bool,
+    /// Whether code blocks wrap.
+    ///
+    /// Off is the setting a programmer wants — a line broken mid-identifier is
+    /// worse than one that scrolls — and on is the setting a reader wants.
+    /// Prose always wraps; the question does not arise for it.
+    pub wrap_code: bool,
     /// How long a full blink cycle takes. Zero means a caret that does not
     /// blink, which is what a user who finds it distracting sets.
     pub blink_period: std::time::Duration,
@@ -170,6 +182,8 @@ impl Style {
             body_font: cosmic::font::default(),
             mono_font: cosmic::font::mono(),
             caret: Caret::default(),
+            line_numbers: false,
+            wrap_code: true,
             blink_period: std::time::Duration::from_millis(1060),
             caret_glide: std::time::Duration::from_millis(70),
             colors: Colors::from_theme(theme),
@@ -226,7 +240,7 @@ pub fn spans<'a>(
     decorations: &DecorationSet,
 ) -> Vec<Span<'a, (), Font>> {
     let size = style.size_of(block);
-    let code_block = block.language.is_some() || block.type_name == "code_block";
+    let code_block = is_code(block);
     let mut out: Vec<Span<'a, (), Font>> = Vec::new();
 
     for (node, segment) in block.inline.iter().zip(&block.segments) {
@@ -398,14 +412,40 @@ fn to_color(rgba: Rgba) -> Color {
 
 /// The wrapping strategy a block is laid out with.
 #[must_use]
-pub fn wrapping(block: &Block) -> Wrapping {
-    // Code does not wrap at word boundaries: a line broken mid-identifier is
-    // worse than one that scrolls.
-    if block.language.is_some() || block.type_name == "code_block" {
+pub fn wrapping(block: &Block, style: &Style) -> Wrapping {
+    if !is_code(block) {
+        return Wrapping::Word;
+    }
+    // Code never wraps at word boundaries: a line broken mid-identifier reads
+    // as two identifiers.
+    if style.wrap_code {
         Wrapping::Glyph
     } else {
-        Wrapping::Word
+        Wrapping::None
     }
+}
+
+/// True when a block holds code.
+#[must_use]
+pub fn is_code(block: &Block) -> bool {
+    block.language.is_some() || block.type_name == "code_block"
+}
+
+/// How wide a code block's line-number gutter is.
+///
+/// Zero when the block is not code or numbers are off, so the caller can add
+/// it unconditionally.
+#[must_use]
+pub fn gutter_width(block: &Block, style: &Style) -> f32 {
+    if !style.line_numbers || !is_code(block) {
+        return 0.0;
+    }
+    // Sized to the widest number the block will show, so a block of nine lines
+    // does not indent as far as one of ninety.
+    let digits = block.line_count().to_string().len().max(2);
+    #[allow(clippy::cast_precision_loss)]
+    let digits = digits as f32;
+    style.text_size * 0.62 * digits + style.text_size * 0.9
 }
 
 /// The marker text a list item is drawn with.

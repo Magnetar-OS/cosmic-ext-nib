@@ -45,7 +45,7 @@ pub use style::{Caret, Colors, Style};
 
 use std::time::Instant;
 
-use cosmic::iced::advanced::text::Renderer as TextRenderer;
+use cosmic::iced::advanced::text::{Paragraph as _, Renderer as TextRenderer};
 use cosmic::iced::advanced::widget::{Id, Operation, Tree, operation, tree};
 use cosmic::iced::advanced::{Clipboard, Layout, Shell, Widget, layout, mouse, renderer};
 use cosmic::iced::{
@@ -78,6 +78,13 @@ pub enum Action {
     Blurred,
     /// A link was activated, with its target.
     Link(String),
+    /// The document was right-clicked, at a point in window coordinates and a
+    /// position in the document.
+    ///
+    /// The widget has already moved the caret there when the click was outside
+    /// the selection, so whatever menu the application shows acts on what the
+    /// user pointed at rather than on what happened to be selected.
+    Context { at: Point, position: usize },
 }
 
 /// Builds the editor widget.
@@ -221,6 +228,12 @@ struct Internal<P> {
     bounds: Vec<Rectangle>,
     /// One per table, for the lines between rows.
     tables: Vec<TableGeometry>,
+    /// How far each block has been scrolled sideways, and how far it can go.
+    ///
+    /// Only unwrapped code blocks ever move: a line of code too long for the
+    /// window has to be reachable, and wrapping it is the thing the setting
+    /// was turned off to avoid.
+    side_scroll: Vec<(f32, f32)>,
     /// Whether the first layout has happened, so autofocus fires once.
     laid_out: bool,
     /// The document these were built from, so an unchanged one is not rebuilt.
@@ -263,6 +276,7 @@ impl<P> Default for Internal<P> {
             blocks: Vec::new(),
             bounds: Vec::new(),
             tables: Vec::new(),
+            side_scroll: Vec::new(),
             laid_out: false,
             built_from: None,
             built_width: 0.0,
@@ -463,6 +477,42 @@ where
                 );
             }
 
+            // The line-number gutter, in the space `rebuild` set aside.
+            if style.line_numbers && style::is_code(block) {
+                let gutter = style::gutter_width(block, &style);
+                if let Some(paragraph) = internal.paragraphs.get(index) {
+                    for line in 0..block.line_count() {
+                        let Some(point) =
+                            paragraph.cursor_position(line, 0, Affinity::After)
+                        else {
+                            break;
+                        };
+                        renderer.fill_text(
+                            Text {
+                                content: (line + 1).to_string(),
+                                bounds: Size::new(
+                                    gutter - style.text_size * 0.6,
+                                    style.line_height_of(block),
+                                ),
+                                size: (style.text_size * 0.85).into(),
+                                line_height: LineHeight::Absolute(
+                                    style.line_height_of(block).into(),
+                                ),
+                                font: style.mono_font,
+                                align_x: cosmic::iced::advanced::text::Alignment::Right,
+                                align_y: cosmic::iced::alignment::Vertical::Top,
+                                shaping: cosmic::iced::advanced::text::Shaping::Basic,
+                                wrapping: Wrapping::None,
+                                ellipsize: cosmic::iced::advanced::text::Ellipsize::None,
+                            },
+                            Point::new(bounds.x - gutter, bounds.y + point.y),
+                            style.colors.muted,
+                            *viewport,
+                        );
+                    }
+                }
+            }
+
             if let Some(marker) = &block.marker {
                 renderer.fill_text(
                     Text {
@@ -489,11 +539,12 @@ where
 
             // The selection goes behind the text, never over it.
             if to > from && block.from < to && block.to > from {
+                let offset = internal.side_scroll.get(index).map_or(0.0, |(at, _)| *at);
                 for rect in selection_rects(block, paragraph, from.max(block.from), to.min(block.to))
                 {
                     renderer.fill_quad(
                         renderer::Quad {
-                            bounds: rect + Vector::new(bounds.x, bounds.y),
+                            bounds: rect + Vector::new(bounds.x - offset, bounds.y),
                             ..renderer::Quad::default()
                         },
                         Background::Color(style.colors.selection),
@@ -501,11 +552,13 @@ where
                 }
             }
 
+            let offset = internal.side_scroll.get(index).map_or(0.0, |(at, _)| *at);
+            let clip = bounds.intersection(viewport).unwrap_or(bounds);
             renderer.fill_paragraph(
                 paragraph,
-                bounds.position(),
+                Point::new(bounds.x - offset, bounds.y),
                 style.colors.text,
-                *viewport,
+                clip,
             );
         }
 
@@ -698,6 +751,68 @@ where
                 internal.drag_anchor = None;
             }
 
+            Event::Mouse(mouse::Event::WheelScrolled { delta }) => {
+                let Some(point) = cursor.position_over(bounds) else {
+                    return;
+                };
+                let local = Point::new(point.x - bounds.x, point.y - bounds.y);
+                let Some(index) = internal
+                    .bounds
+                    .iter()
+                    .position(|b| b.contains(local))
+                else {
+                    return;
+                };
+                let (dx, dy) = match delta {
+                    mouse::ScrollDelta::Lines { x, y } => (x * 32.0, y * 32.0),
+                    mouse::ScrollDelta::Pixels { x, y } => (*x, *y),
+                };
+                // A horizontal wheel, or Shift with a vertical one: the second
+                // is how a mouse with one wheel says the same thing.
+                let step = if dx.abs() > f32::EPSILON { dx } else { dy };
+                let Some((at, limit)) = internal.side_scroll.get_mut(index) else {
+                    return;
+                };
+                if *limit <= 0.0 {
+                    return;
+                }
+                *at = (*at - step).clamp(0.0, *limit);
+                shell.capture_event();
+                shell.request_redraw();
+            }
+
+            Event::Mouse(mouse::Event::ButtonPressed(mouse::Button::Right)) => {
+                let Some(point) = cursor.position_over(bounds) else {
+                    return;
+                };
+                let local = point - Vector::new(bounds.x, bounds.y);
+                let Some(pos) = Self::position_at(internal, Point::new(local.x, local.y))
+                else {
+                    return;
+                };
+                if !internal.focused {
+                    internal.focused = true;
+                    self.emit(shell, Action::Focused);
+                }
+                // A right-click inside the selection acts on the selection; one
+                // outside it moves there first, because a menu that operated on
+                // something other than what was pointed at would be a trap.
+                let selection = self.live(internal).selection();
+                let inside = pos >= selection.from() && pos <= selection.to();
+                if !inside || selection.is_empty() {
+                    self.select(internal, shell, Selection::cursor(pos));
+                }
+                self.emit(
+                    shell,
+                    Action::Context {
+                        at: point,
+                        position: pos,
+                    },
+                );
+                shell.capture_event();
+                shell.request_redraw();
+            }
+
             Event::Keyboard(keyboard::Event::KeyPressed {
                 key,
                 modifiers,
@@ -855,6 +970,10 @@ impl<Message> Editor<'_, Message> {
         internal.paragraphs.clear();
         internal.bounds.clear();
         internal.tables.clear();
+        // Offsets are kept across a rebuild where the block count has not
+        // changed, so typing in a scrolled code block does not jump it back.
+        internal.side_scroll.resize(internal.blocks.len(), (0.0, 0.0));
+        internal.side_scroll.truncate(internal.blocks.len());
 
         let empty = DecorationSet::empty();
         let decorations = self.decorations.unwrap_or(&empty);
@@ -864,15 +983,21 @@ impl<Message> Editor<'_, Message> {
         while index < internal.blocks.len() {
             let Some(cell) = internal.blocks[index].cell else {
                 let block = &internal.blocks[index];
-                let x = style.padding + style.indent_of(block);
+                let gutter = style::gutter_width(block, style);
+                let x = style.padding + style.indent_of(block) + gutter;
                 let available = (width - x - style.padding).max(style.text_size);
-                let (paragraph, height) = build(block, style, decorations, available);
+                let (paragraph, height) = build::<P>(block, style, decorations, available);
+                let overflow = (paragraph.min_width() - available).max(0.0);
                 internal.bounds.push(Rectangle {
                     x,
                     y,
                     width: available,
                     height,
                 });
+                if let Some(slot) = internal.side_scroll.get_mut(index) {
+                    slot.1 = overflow;
+                    slot.0 = slot.0.min(overflow);
+                }
                 internal.paragraphs.push(paragraph);
                 y += height + style.text_size * style.block_spacing;
                 index += 1;
@@ -959,7 +1084,7 @@ impl<Message> Editor<'_, Message> {
                 let span = cell.span as f32;
                 let available =
                     (column_width * span + gap * (span - 1.0) - inset * 2.0).max(style.text_size);
-                let (paragraph, height) = build(block, style, decorations, available);
+                let (paragraph, height) = build::<P>(block, style, decorations, available);
 
                 let used = column_heights
                     .iter()
@@ -1034,7 +1159,11 @@ impl<Message> Editor<'_, Message> {
         if !matches!(block.kind, blocks::Kind::Text) {
             return Some(block.node_pos);
         }
-        let local = Point::new(point.x - bounds.x, (point.y - bounds.y).max(0.0));
+        let offset = internal.side_scroll.get(index).map_or(0.0, |(at, _)| *at);
+        let local = Point::new(
+            point.x - bounds.x + offset,
+            (point.y - bounds.y).max(0.0),
+        );
         let line = line_at(paragraph, block, local.y);
         let offset = match paragraph.hit_test(local) {
             Some(hit) => block.line_start(line) + hit.cursor(),
@@ -1078,8 +1207,9 @@ impl<Message> Editor<'_, Message> {
             let point = paragraph
                 .cursor_position(line, within, Affinity::After)
                 .unwrap_or(Point::ORIGIN);
+            let offset = internal.side_scroll.get(index).map_or(0.0, |(at, _)| *at);
             Rectangle {
-                x: bounds.x + point.x,
+                x: bounds.x + point.x - offset,
                 y: bounds.y + point.y,
                 width: 0.0,
                 height,
@@ -1402,16 +1532,23 @@ where
         return (P::default(), style.text_size);
     }
     let spans = style::spans(block, style, decorations);
+    // An unwrapped block is laid out unbounded and drawn clipped, so nothing
+    // is lost — it is reached by scrolling the block sideways.
+    let laid_out = if style::wrapping(block, style) == Wrapping::None {
+        f32::INFINITY
+    } else {
+        available
+    };
     let paragraph = P::with_spans(Text {
         content: spans.as_slice(),
-        bounds: Size::new(available, f32::INFINITY),
+        bounds: Size::new(laid_out, f32::INFINITY),
         size: style.size_of(block).into(),
         line_height: LineHeight::Absolute(style.line_height_of(block).into()),
         font: style.body_font,
         align_x: cosmic::iced::advanced::text::Alignment::Default,
         align_y: cosmic::iced::alignment::Vertical::Top,
         shaping: cosmic::iced::advanced::text::Shaping::Advanced,
-        wrapping: style::wrapping(block),
+        wrapping: style::wrapping(block, style),
         ellipsize: cosmic::iced::advanced::text::Ellipsize::None,
     });
     // An empty block still occupies a line: a paragraph with nothing in it
