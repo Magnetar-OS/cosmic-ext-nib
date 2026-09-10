@@ -430,3 +430,107 @@ fn an_unbound_key_changes_nothing() {
     );
     assert_eq!(after.doc(), state.doc());
 }
+
+// ---------------------------------------------------------------------------
+// Code blocks
+// ---------------------------------------------------------------------------
+
+fn code_block(text: &str) -> Node {
+    let b = b();
+    b.doc(nodes![b.node(nodes::CODE_BLOCK, nodes![b.text(text)])])
+}
+
+#[test]
+fn enter_in_code_keeps_the_line_s_indentation() {
+    // The caret at the end of an indented line.
+    let doc = code_block("fn main() {\n    let x = 1;");
+    let pos = doc.content_size() - 1;
+    let state = state_at(doc, pos);
+    let state = run(&state, &cmd::new_line_in_code());
+    assert_eq!(
+        state.doc().text_content(),
+        "fn main() {\n    let x = 1;\n    ",
+        "a language where indentation is syntax makes dropping it wrong"
+    );
+}
+
+#[test]
+fn enter_at_an_unindented_line_adds_no_indentation() {
+    let doc = code_block("fn main() {");
+    let pos = doc.content_size() - 1;
+    let state = state_at(doc, pos);
+    let state = run(&state, &cmd::new_line_in_code());
+    assert_eq!(state.doc().text_content(), "fn main() {\n");
+}
+
+#[test]
+fn tab_in_code_inserts_spaces_at_the_caret() {
+    let doc = code_block("let x = 1;");
+    let state = state_at(doc, 1);
+    let state = run(&state, &cmd::indent_code(4));
+    assert_eq!(state.doc().text_content(), "    let x = 1;");
+}
+
+#[test]
+fn tab_over_several_lines_indents_each_of_them() {
+    let doc = code_block("one\ntwo\nthree");
+    // From inside the first line to inside the second.
+    let state = EditorState::with_selection(
+        schema(),
+        doc,
+        Selection::text(2, 6),
+        Vec::new(),
+    );
+    let state = run(&state, &cmd::indent_code(2));
+    assert_eq!(state.doc().text_content(), "  one\n  two\nthree");
+}
+
+#[test]
+fn shift_tab_removes_up_to_one_indent_and_no_more() {
+    let doc = code_block("      deep\n  shallow");
+    let state = EditorState::with_selection(
+        schema(),
+        doc,
+        Selection::text(2, 14),
+        Vec::new(),
+    );
+    let state = run(&state, &cmd::outdent_code(4));
+    assert_eq!(
+        state.doc().text_content(),
+        "  deep\nshallow",
+        "four off the first, the two that were there off the second"
+    );
+}
+
+#[test]
+fn shift_tab_on_an_unindented_line_does_nothing() {
+    let doc = code_block("flush");
+    let state = state_at(doc, 1);
+    assert!(cmd::outdent_code(4)(&state).is_none());
+}
+
+#[test]
+fn indenting_outside_a_code_block_is_not_this_commands_business() {
+    let state = state_at(one_paragraph("prose"), 2);
+    assert!(cmd::indent_code(4)(&state).is_none());
+}
+
+#[test]
+fn tab_indents_code_and_a_list_item_by_the_same_key() {
+    let map = Keymap::base(&schema());
+    let tab = Binding::plain(Key::Tab);
+
+    // In a code block it is whitespace.
+    let state = state_at(code_block("let x = 1;"), 1);
+    let state = press(&state, &map, &tab);
+    assert_eq!(state.doc().text_content(), "    let x = 1;");
+
+    // In a list it is an outline level.
+    let state = state_at(a_list(&["one", "two"]), 11);
+    let state = press(&state, &map, &tab);
+    assert!(
+        state.doc().to_string().contains("bullet_list(list_item(paragraph(\"one\")"),
+        "{}",
+        state.doc()
+    );
+}

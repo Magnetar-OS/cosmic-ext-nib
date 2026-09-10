@@ -111,7 +111,14 @@ impl Keymap {
         Self::default()
     }
 
-    /// The bindings an editor has unless it says otherwise. See
+    /// How far one Tab indents inside a code block.
+///
+/// Four spaces, and spaces rather than a tab: the block's text is what gets
+/// saved, and a document that renders differently depending on the reader's
+/// tab width is one the author did not write.
+pub const CODE_INDENT: usize = 4;
+
+/// The bindings an editor has unless it says otherwise. See
     /// [`base_keymap`].
     #[must_use]
     pub fn base(schema: &crate::schema::Schema) -> Self {
@@ -219,6 +226,13 @@ use crate::bitflags_like;
 // The default bindings
 // ---------------------------------------------------------------------------
 
+/// How far one Tab indents inside a code block.
+///
+/// Four spaces, and spaces rather than a tab: the block's text is what gets
+/// saved, and a document that renders differently depending on the reader's
+/// tab width is one the author did not write.
+pub const CODE_INDENT: usize = 4;
+
 /// The bindings an editor has unless it says otherwise.
 ///
 /// Built against a schema by *name*, so a schema without lists simply gets no
@@ -319,10 +333,24 @@ fn base_keymap(schema: &crate::schema::Schema) -> Keymap {
     }
 
     // -- indentation -------------------------------------------------------
+    //
+    // Tab means two things and the schema decides which: inside a list it is
+    // an outline level, inside code it is whitespace. Chained in that order,
+    // because a list item inside a code block is not a thing that exists.
+    let mut tab: Vec<cmd::Command> = Vec::new();
+    let mut shift_tab: Vec<cmd::Command> = Vec::new();
     if let Some(item) = node(nodes::LIST_ITEM) {
+        tab.push(cmd::sink_list_item(item));
+        shift_tab.push(cmd::lift_list_item(item));
+    }
+    if node(nodes::CODE_BLOCK).is_some() {
+        tab.push(cmd::indent_code(CODE_INDENT));
+        shift_tab.push(cmd::outdent_code(CODE_INDENT));
+    }
+    if !tab.is_empty() {
         map = map
-            .bind(Binding::plain(Key::Tab), cmd::sink_list_item(item))
-            .bind(Binding::shift(Key::Tab), cmd::lift_list_item(item));
+            .bind(Binding::plain(Key::Tab), chain(tab))
+            .bind(Binding::shift(Key::Tab), chain(shift_tab));
     }
     map.bind(Binding::primary_shift(Key::Char('l')), cmd::lift())
 }

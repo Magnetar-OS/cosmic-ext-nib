@@ -60,6 +60,7 @@ pub mod node;
 pub mod replace;
 pub mod resolve;
 pub mod schema;
+pub mod search;
 pub mod slice;
 pub mod state;
 pub mod transform;

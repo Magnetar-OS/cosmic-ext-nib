@@ -575,6 +575,11 @@ pub fn create_paragraph_near() -> Command {
 }
 
 /// Newline inside a code block, where Enter must not split.
+///
+/// Carries the current line's indentation to the new one. That is not a
+/// convenience — a language where indentation is syntax makes an editor that
+/// drops it actively wrong — and it is the one place a rich text editor has to
+/// behave like a code editor, because inside a code block it is one.
 #[must_use]
 pub fn new_line_in_code() -> Command {
     command(|state| {
@@ -583,7 +588,112 @@ pub fn new_line_in_code() -> Command {
             return None;
         }
         let mut tr = state.tr();
-        tr.insert_text("\n").ok()?;
+        tr.insert_text(&format!("\n{}", current_indent(state)?)).ok()?;
+        Some(tr.clone().scroll_into_view())
+    })
+}
+
+/// The whitespace at the start of the line the caret is on.
+fn current_indent(state: &EditorState) -> Option<String> {
+    let at = cursor(state)?;
+    let text = at.parent().text_content();
+    let offset = at.parent_offset().min(text.len());
+    let line_start = text[..offset].rfind('\n').map_or(0, |i| i + 1);
+    Some(
+        text[line_start..offset]
+            .chars()
+            .take_while(|c| *c == ' ' || c == &'\t')
+            .collect(),
+    )
+}
+
+/// The lines of a code block that the selection touches, as byte ranges into
+/// the block's text, with the block's content start.
+fn code_lines(state: &EditorState) -> Option<(usize, String, Vec<(usize, usize)>)> {
+    let selection = state.selection();
+    let doc = state.doc();
+    let from = doc.resolve(selection.from());
+    if !from.parent().typ().spec().code {
+        return None;
+    }
+    let start = from.start(from.depth());
+    let text = from.parent().text_content();
+    let (a, b) = (
+        selection.from().saturating_sub(start),
+        selection.to().saturating_sub(start).min(text.len()),
+    );
+
+    let mut lines = Vec::new();
+    let mut line_start = 0;
+    for (i, byte) in text.bytes().enumerate() {
+        if byte == b'\n' {
+            if line_start <= b && i >= a {
+                lines.push((line_start, i));
+            }
+            line_start = i + 1;
+        }
+    }
+    if line_start <= b {
+        lines.push((line_start, text.len()));
+    }
+    (!lines.is_empty()).then_some((start, text, lines))
+}
+
+/// Indents the code the selection touches by `width` spaces.
+///
+/// With a collapsed selection it inserts the indent at the caret, which is
+/// what Tab means in the middle of a line; with a range it indents every line
+/// the range touches, which is what Tab means with several lines selected.
+#[must_use]
+pub fn indent_code(width: usize) -> Command {
+    command(move |state| {
+        let (start, _, lines) = code_lines(state)?;
+        let selection = state.selection();
+        let padding = " ".repeat(width.max(1));
+
+        let mut tr = state.tr().now();
+        if selection.is_empty() && lines.len() == 1 {
+            tr.insert_text(&padding).ok()?;
+            return Some(tr.clone().scroll_into_view());
+        }
+        // Back to front, so each insertion leaves the earlier offsets alone.
+        for (line_start, _) in lines.iter().rev() {
+            let at = start + line_start;
+            let node = state.schema().text(padding.as_str(), Marks::none());
+            tr.replace(at, at, Slice::new(Fragment::from(node), 0, 0)).ok()?;
+        }
+        Some(tr.clone().scroll_into_view())
+    })
+}
+
+/// Removes up to `width` spaces from the start of each line the selection
+/// touches.
+#[must_use]
+pub fn outdent_code(width: usize) -> Command {
+    command(move |state| {
+        let (start, text, lines) = code_lines(state)?;
+        let width = width.max(1);
+
+        let mut removals = Vec::new();
+        for (line_start, line_end) in &lines {
+            let line = &text[*line_start..*line_end];
+            let taken = line
+                .chars()
+                .take(width)
+                .take_while(|c| *c == ' ' || *c == '\t')
+                .count();
+            if taken > 0 {
+                removals.push((start + line_start, start + line_start + taken));
+            }
+        }
+        if removals.is_empty() {
+            return None;
+        }
+
+        let mut tr = state.tr().now();
+        for (from, to) in removals.iter().rev() {
+            tr.delete(*from, *to).ok()?;
+        }
         Some(tr.clone().scroll_into_view())
     })
 }
