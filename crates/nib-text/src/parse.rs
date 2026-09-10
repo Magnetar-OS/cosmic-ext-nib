@@ -32,12 +32,8 @@ pub fn parse(schema: &Schema, text: &str) -> Node {
                     continue;
                 }
                 if let Some(typ) = schema.node_id(nodes::BLOCKQUOTE)
-                    && let Ok(node) = schema.create(
-                        typ,
-                        None,
-                        Fragment::from_vec(inner.clone()),
-                        Marks::none(),
-                    )
+                    && let Ok(node) =
+                        schema.create(typ, None, Fragment::from_vec(inner.clone()), Marks::none())
                 {
                     content.push(node);
                 } else {
@@ -69,9 +65,9 @@ fn paragraphs(schema: &Schema, text: &str) -> Vec<Node> {
         .filter_map(|run| {
             let mut inline: Vec<Node> = Vec::new();
             for (i, line) in run.lines().enumerate() {
-                if i > 0 && let Some(typ) = hard_break
-                    && let Ok(node) =
-                        schema.create(typ, None, Fragment::empty(), Marks::none())
+                if i > 0
+                    && let Some(typ) = hard_break
+                    && let Ok(node) = schema.create(typ, None, Fragment::empty(), Marks::none())
                 {
                     inline.push(node);
                 }
@@ -80,12 +76,7 @@ fn paragraphs(schema: &Schema, text: &str) -> Vec<Node> {
                 }
             }
             schema
-                .create(
-                    paragraph,
-                    None,
-                    Fragment::from_vec(inline),
-                    Marks::none(),
-                )
+                .create(paragraph, None, Fragment::from_vec(inline), Marks::none())
                 .ok()
         })
         .collect()

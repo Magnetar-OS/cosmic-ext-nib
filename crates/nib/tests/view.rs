@@ -480,3 +480,85 @@ fn a_document_with_one_character_no_longer_looks_empty() {
     assert_eq!(found.len(), 1);
     assert!(!found[0].text.is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// Authored colour, and whether it can be seen
+// ---------------------------------------------------------------------------
+
+use cosmic::iced::Color;
+use nib::style::{contrast, legible};
+
+const WHITE: Color = Color::WHITE;
+const BLACK: Color = Color::BLACK;
+
+#[test]
+fn contrast_is_the_wcag_ratio_at_both_extremes() {
+    assert!((contrast(BLACK, WHITE) - 21.0).abs() < 0.01);
+    assert!((contrast(WHITE, WHITE) - 1.0).abs() < 0.01);
+}
+
+#[test]
+fn white_on_white_cannot_be_drawn() {
+    // The oldest trick in hostile mail: text the recipient cannot see, in a
+    // message that reads innocently, put there for whatever is scanning it.
+    // Closed by construction — there is no list of suspicious colours to keep
+    // current, because the check is on the result rather than the phrasing.
+    let fallback = BLACK;
+    assert_eq!(legible(WHITE, WHITE, fallback), fallback);
+}
+
+#[test]
+fn a_colour_just_short_of_the_background_cannot_be_drawn_either() {
+    // `#fefefe` on `#ffffff` is 1.01:1 — invisible, and not white.
+    let nearly = Color::from_rgb8(0xfe, 0xfe, 0xfe);
+    assert_eq!(legible(nearly, WHITE, BLACK), BLACK);
+}
+
+#[test]
+fn transparency_is_not_a_way_around_it() {
+    // Asking for low contrast without naming a low-contrast colour. The alpha
+    // is resolved against the ground before the ratio is taken.
+    let ghost = Color { a: 0.02, ..BLACK };
+    assert_eq!(legible(ghost, WHITE, BLACK), BLACK);
+}
+
+#[test]
+fn a_colour_that_can_be_read_is_kept() {
+    // The reader is showing the message, not rewriting it.
+    let red = Color::from_rgb8(0xcc, 0, 0);
+    let shown = legible(red, WHITE, BLACK);
+    assert!((shown.r - red.r).abs() < f32::EPSILON, "{shown:?}");
+    assert!(shown.g.abs() < f32::EPSILON);
+}
+
+#[test]
+fn the_check_is_against_the_ground_not_against_the_theme() {
+    // White text is unreadable on white and perfectly readable on black, and
+    // the same call has to answer both — which is why the background is a
+    // parameter rather than a constant.
+    assert_eq!(legible(WHITE, WHITE, BLACK), BLACK);
+    let on_black = legible(WHITE, BLACK, BLACK);
+    assert!((on_black.r - 1.0).abs() < f32::EPSILON, "{on_black:?}");
+}
+
+#[test]
+fn alignment_is_absent_until_the_author_says_otherwise() {
+    use cosmic::iced::advanced::text::Alignment;
+
+    let b = b();
+    let plain = b.doc(nodes![b.node(nodes::PARAGRAPH, nodes![b.text("x")])]);
+    assert!(matches!(
+        nib::style::alignment(&flatten(&plain)[0]),
+        Alignment::Default
+    ));
+
+    let centred = b.doc(nodes![b.attr_node(
+        nodes::PARAGRAPH,
+        &attrs! { "align" => "center" },
+        nodes![b.text("x")],
+    )]);
+    assert!(matches!(
+        nib::style::alignment(&flatten(&centred)[0]),
+        Alignment::Center
+    ));
+}

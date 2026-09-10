@@ -55,14 +55,13 @@ use cosmic::iced::{
     Background, Border, Color, Element, Event, Length, Point, Rectangle, Size, Vector, keyboard,
     window,
 };
-use nib_model::commands;
 use nib_model::decoration::DecorationSet;
-use nib_model::vim;
 use nib_model::input_rules::InputRule;
 use nib_model::keymap::{Binding, Key, Keymap, Mods};
 use nib_model::node::Node;
 use nib_model::slice::Slice;
 use nib_model::state::{EditorState, Selection, Transaction};
+use nib_model::{commands, vim};
 
 /// What the editor asks its application to do.
 ///
@@ -1868,7 +1867,7 @@ where
         size: style.size_of(block).into(),
         line_height: LineHeight::Absolute(style.line_height_of(block).into()),
         font: style.body_font,
-        align_x: cosmic::iced::advanced::text::Alignment::Default,
+        align_x: style::alignment(block),
         align_y: cosmic::iced::alignment::Vertical::Top,
         shaping: cosmic::iced::advanced::text::Shaping::Advanced,
         wrapping: style::wrapping(block, style),

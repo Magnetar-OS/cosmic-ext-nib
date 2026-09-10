@@ -20,9 +20,9 @@ use crate::node::Node;
 use crate::resolve::ResolvedPos;
 use crate::schema::NodeTypeId;
 use crate::slice::Slice;
+use crate::transform::Transform;
 use crate::transform::fit::replace_step;
 use crate::transform::step::StepError;
-use crate::transform::Transform;
 
 /// Every depth at which `from..to` covers the whole content of the node.
 ///
@@ -96,13 +96,7 @@ impl Transform {
         for (i, &depth) in covered.iter().enumerate() {
             let last = i == covered.len() - 1;
             // The node's own content may legally be empty: empty it in place.
-            if (last && depth == 0)
-                || r_from
-                    .node(depth)
-                    .typ()
-                    .content_match()
-                    .valid_end()
-            {
+            if (last && depth == 0) || r_from.node(depth).typ().content_match().valid_end() {
                 return self.delete(r_from.start(depth), r_to.end(depth));
             }
             // Otherwise take the node itself, if the parent will allow it.
@@ -254,11 +248,7 @@ impl Transform {
                         open_depth,
                         None,
                     );
-                    let end = if expand {
-                        r_to.after(target_depth)
-                    } else {
-                        to
-                    };
+                    let end = if expand { r_to.after(target_depth) } else { to };
                     return self.replace_fitted(
                         r_from.before(target_depth),
                         end,
@@ -305,11 +295,8 @@ impl Transform {
         // widening: it goes exactly where the caret is.
         if !node.is_inline()
             && from == to
-            && let Some(point) = crate::transform::structure::insert_point(
-                self.doc(),
-                from,
-                node.type_id(),
-            )
+            && let Some(point) =
+                crate::transform::structure::insert_point(self.doc(), from, node.type_id())
         {
             return self.replace_fitted(point, point, Slice::new(Fragment::from(node), 0, 0));
         }

@@ -171,9 +171,13 @@ impl Step {
                 Ok(doc.replace(*from, *to, &inserted)?)
             }
 
-            Self::AddMark { from, to, mark } => {
-                Ok(map_marks(doc, *from, *to, &|marks| mark.add_to_set(marks), mark)?)
-            }
+            Self::AddMark { from, to, mark } => Ok(map_marks(
+                doc,
+                *from,
+                *to,
+                &|marks| mark.add_to_set(marks),
+                mark,
+            )?),
             Self::RemoveMark { from, to, mark } => Ok(map_marks(
                 doc,
                 *from,
@@ -476,7 +480,11 @@ impl Step {
             let slice = if a.size() + b.size() == 0 {
                 Slice::empty()
             } else {
-                Slice::new(a.content().append(b.content()), a.open_start(), b.open_end())
+                Slice::new(
+                    a.content().append(b.content()),
+                    a.open_start(),
+                    b.open_end(),
+                )
             };
             return Some(Self::replace(*a_from, a_to + (b_to - b_from), slice));
         }
@@ -485,7 +493,11 @@ impl Step {
             let slice = if a.size() + b.size() == 0 {
                 Slice::empty()
             } else {
-                Slice::new(b.content().append(a.content()), b.open_start(), a.open_end())
+                Slice::new(
+                    b.content().append(a.content()),
+                    b.open_start(),
+                    a.open_end(),
+                )
             };
             return Some(Self::replace(*b_from, *a_to, slice));
         }
@@ -508,7 +520,11 @@ fn replace_node_shell(doc: &Node, pos: usize, updated: &Node) -> Result<Node, Re
         Fragment::empty(),
         updated.marks().clone(),
     );
-    doc.replace(pos, pos + 1, &Slice::new(Fragment::from(shell), 0, open_end))
+    doc.replace(
+        pos,
+        pos + 1,
+        &Slice::new(Fragment::from(shell), 0, open_end),
+    )
 }
 
 /// Applies a mark change to every inline node in a range whose parent allows

@@ -35,14 +35,20 @@ fn rgb_reads_both_spellings_and_percentages() {
     assert_eq!(parse_color("rgb(255 0 0)"), red);
     assert_eq!(parse_color("rgb(100%, 0%, 0%)"), red);
     assert_eq!(parse_color("rgba(255, 0, 0, 1)"), red);
-    assert_eq!(parse_color("rgba(255 0 0 / 50%)"), Some(Rgba::new(255, 0, 0, 128)));
+    assert_eq!(
+        parse_color("rgba(255 0 0 / 50%)"),
+        Some(Rgba::new(255, 0, 0, 128))
+    );
 }
 
 #[test]
 fn a_channel_out_of_range_saturates_rather_than_wrapping() {
     // `rgb(300, -20, 0)` is invalid CSS; clamping is what browsers do, and
     // wrapping would turn an over-bright red into a dark one.
-    assert_eq!(parse_color("rgb(300, -20, 0)"), Some(Rgba::new(255, 0, 0, 0xff)));
+    assert_eq!(
+        parse_color("rgb(300, -20, 0)"),
+        Some(Rgba::new(255, 0, 0, 0xff))
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -68,11 +74,17 @@ fn a_numeric_font_weight_is_bold_from_600() {
 #[test]
 fn text_decoration_reads_both_and_neither() {
     let both = parse("text-decoration: underline line-through");
-    assert_eq!((both.underline, both.strikethrough), (Some(true), Some(true)));
+    assert_eq!(
+        (both.underline, both.strikethrough),
+        (Some(true), Some(true))
+    );
     // Naming neither turns both off — which is how `text-decoration: none`
     // undoes a link's underline.
     let none = parse("text-decoration: none");
-    assert_eq!((none.underline, none.strikethrough), (Some(false), Some(false)));
+    assert_eq!(
+        (none.underline, none.strikethrough),
+        (Some(false), Some(false))
+    );
 }
 
 #[test]
@@ -112,7 +124,9 @@ fn the_historic_execution_vectors_are_refused_with_it() {
     ] {
         let d = parse(css);
         assert!(
-            d.refused.iter().any(|r| matches!(r, Refusal::Fetches { .. })),
+            d.refused
+                .iter()
+                .any(|r| matches!(r, Refusal::Fetches { .. })),
             "{css} was not refused"
         );
     }
@@ -123,7 +137,10 @@ fn an_at_rule_refuses_the_whole_list() {
     // The parse is already not what the author expected, and guessing which
     // half was meant is how a bypass gets in.
     let d = parse("@import url(evil.css); color: red");
-    assert_eq!(d.color, None, "a declaration beside an @rule was still applied");
+    assert_eq!(
+        d.color, None,
+        "a declaration beside an @rule was still applied"
+    );
     assert!(matches!(d.refused.as_slice(), [Refusal::Fetches { .. }]));
 }
 
@@ -132,7 +149,9 @@ fn positioning_is_refused_because_text_can_be_hidden_under_text() {
     for property in ["position", "float", "z-index", "transform", "clip"] {
         let d = parse(&format!("{property}: whatever"));
         assert!(
-            d.refused.iter().any(|r| matches!(r, Refusal::Positions { .. })),
+            d.refused
+                .iter()
+                .any(|r| matches!(r, Refusal::Positions { .. })),
             "{property} was not refused"
         );
     }
@@ -216,7 +235,11 @@ fn a_declaration_list_of_nothing_useful_is_empty_rather_than_noisy() {
     let d = parse("margin: 0; padding: 0; border-collapse: collapse");
     assert!(d.is_empty());
     assert!(!d.hides());
-    assert_eq!(d.refused.len(), 3, "recorded, but only so the count is honest");
+    assert_eq!(
+        d.refused.len(),
+        3,
+        "recorded, but only so the count is honest"
+    );
 }
 
 #[test]

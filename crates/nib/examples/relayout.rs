@@ -120,11 +120,9 @@ fn keystroke(
     let new_flat = blocks::flatten(edited);
     let started = Instant::now();
     let start = doc.content().find_diff_start(edited.content(), 0);
-    let ends = doc.content().find_diff_end(
-        edited.content(),
-        doc.content_size(),
-        edited.content_size(),
-    );
+    let ends =
+        doc.content()
+            .find_diff_end(edited.content(), doc.content_size(), edited.content_size());
     let before = start.unwrap_or(usize::MAX);
     let after = ends.map_or(0, |(_, new)| new.max(before));
     let prefix = new_flat
@@ -160,7 +158,5 @@ fn keystroke(
         );
     }
     let keystroke = started.elapsed();
-    println!(
-        "keystroke: {keystroke:?}   (kept {prefix} + {suffix}, shaped {rebuilt})"
-    );
+    println!("keystroke: {keystroke:?}   (kept {prefix} + {suffix}, shaped {rebuilt})");
 }

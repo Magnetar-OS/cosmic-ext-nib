@@ -114,11 +114,7 @@ impl Slice {
     /// construction, and this is what checks that.
     #[must_use]
     pub fn remove_between(&self, from: usize, to: usize) -> Option<Self> {
-        let content = remove_range(
-            &self.content,
-            from + self.open_start,
-            to + self.open_start,
-        )?;
+        let content = remove_range(&self.content, from + self.open_start, to + self.open_start)?;
         Some(Self {
             content,
             open_start: self.open_start,
@@ -193,10 +189,6 @@ impl Node {
         let start = r_from.start(depth);
         let node = r_from.node(depth);
         let content = node.content().cut(r_from.pos() - start, r_to.pos() - start);
-        Slice::new(
-            content,
-            r_from.depth() - depth,
-            r_to.depth() - depth,
-        )
+        Slice::new(content, r_from.depth() - depth, r_to.depth() - depth)
     }
 }

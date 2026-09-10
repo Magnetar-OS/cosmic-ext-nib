@@ -14,6 +14,10 @@ path = "src/lib.rs"
 
 [dependencies]
 nib-model.workspace = true
+# The safe subset of CSS. `style=` attributes and the presentational
+# attributes that predate them become marks here; what a colour *means* against
+# a given background is the view's question, not this crate's.
+nib-css.workspace = true
 html5ever.workspace = true
 markup5ever_rcdom.workspace = true
 

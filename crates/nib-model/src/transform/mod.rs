@@ -132,7 +132,12 @@ impl Transform {
     /// # Errors
     ///
     /// [`StepError`] when the replacement does not apply.
-    pub fn replace(&mut self, from: usize, to: usize, slice: Slice) -> Result<&mut Self, StepError> {
+    pub fn replace(
+        &mut self,
+        from: usize,
+        to: usize,
+        slice: Slice,
+    ) -> Result<&mut Self, StepError> {
         self.step(Step::replace(from, to, slice))
     }
 

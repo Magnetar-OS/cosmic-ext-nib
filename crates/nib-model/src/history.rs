@@ -120,12 +120,7 @@ impl Branch {
 
     /// Adds a transform's steps, inverted. `selection` being `Some` starts a
     /// new event.
-    fn add(
-        &self,
-        tr: &Transaction,
-        selection: Option<Selection>,
-        options: Options,
-    ) -> Self {
+    fn add(&self, tr: &Transaction, selection: Option<Selection>, options: Options) -> Self {
         let mut items = self.items.clone();
         let mut event_count = self.event_count;
         let mut selection = selection;
@@ -218,7 +213,9 @@ impl Branch {
                 }
                 Some(step) => {
                     let step = if remapping {
-                        if let Some(mapped) = step.map(&remap) { mapped } else {
+                        if let Some(mapped) = step.map(&remap) {
+                            mapped
+                        } else {
                             if item.selection.is_some() {
                                 selection.clone_from(&item.selection);
                                 cut = i;
@@ -309,10 +306,7 @@ impl StateField for HistoryField {
         _new_doc: &Node,
         _new_selection: &Selection,
     ) -> FieldValue {
-        let history = value
-            .downcast_ref::<History>()
-            .cloned()
-            .unwrap_or_default();
+        let history = value.downcast_ref::<History>().cloned().unwrap_or_default();
         Arc::new(apply(history, tr, old))
     }
 }
@@ -338,15 +332,16 @@ fn apply(mut history: History, tr: &Transaction, state: &EditorState) -> History
         return History {
             done: history.done.add_maps(maps),
             undone: history.undone.add_maps(maps),
-            prev_ranges: history
-                .prev_ranges
-                .map(|r| map_ranges(&r, tr.mapping())),
+            prev_ranges: history.prev_ranges.map(|r| map_ranges(&r, tr.mapping())),
             ..history
         };
     }
 
     let new_group = history.prev_time == 0
-        || tr.time() > history.prev_time.saturating_add(history.options.new_group_delay)
+        || tr.time()
+            > history
+                .prev_time
+                .saturating_add(history.options.new_group_delay)
         || !is_adjacent_to(tr, history.prev_ranges.as_deref());
 
     let ranges = ranges_for(tr.mapping().maps().last());

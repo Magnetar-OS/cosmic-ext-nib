@@ -219,6 +219,20 @@ impl Attrs {
         self.get(name)?.as_bool()
     }
 
+    /// The value as a float.
+    ///
+    /// An integer answers too: `1` and `1.0` are the same number, and a
+    /// serialiser that wrote the shorter spelling should not make a ratio
+    /// disappear.
+    #[must_use]
+    pub fn get_float(&self, name: &str) -> Option<f64> {
+        let value = self.get(name)?;
+        #[allow(clippy::cast_precision_loss, reason = "attribute ints are small")]
+        value
+            .as_float()
+            .or_else(|| value.as_int().map(|i| i as f64))
+    }
+
     /// Returns a copy with `name` set to `value`. Copy-on-write: the map is
     /// cloned only here, and only when something actually changes.
     #[must_use]

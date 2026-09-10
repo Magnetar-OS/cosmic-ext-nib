@@ -14,6 +14,9 @@ path = "src/lib.rs"
 
 [dependencies]
 nib-model.workspace = true
+# For reading the colour a styling mark carries. The view is where a colour
+# meets the pixels behind it, so it is where legibility is decided.
+nib-css.workspace = true
 nib-html = { workspace = true, optional = true }
 nib-text = { workspace = true, optional = true }
 # Unpinned, like every COSMIC application: the consumer's Cargo.lock decides

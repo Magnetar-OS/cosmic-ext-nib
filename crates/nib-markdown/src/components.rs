@@ -8,8 +8,7 @@
 //! dialect decides how they are written back out.
 
 use nib_model::attrs::Value;
-use nib_model::schema::AttrSpec;
-use nib_model::schema::{NodeSpec, Schema, SchemaError};
+use nib_model::schema::{AttrSpec, NodeSpec, Schema, SchemaError};
 
 /// The block component's node type name.
 pub const COMPONENT_BLOCK: &str = "component_block";
@@ -71,11 +70,7 @@ pub fn with_components(schema: &Schema) -> Result<Schema, SchemaError> {
     for typ in schema.mark_types() {
         builder = builder.mark(typ.name(), typ.spec().clone());
     }
-    builder.top_node(
-        schema
-            .node_type(schema.top_node_type())
-            .name()
-            .to_owned(),
-    )
-    .build()
+    builder
+        .top_node(schema.node_type(schema.top_node_type()).name().to_owned())
+        .build()
 }

@@ -112,13 +112,13 @@ impl Keymap {
     }
 
     /// How far one Tab indents inside a code block.
-///
-/// Four spaces, and spaces rather than a tab: the block's text is what gets
-/// saved, and a document that renders differently depending on the reader's
-/// tab width is one the author did not write.
-pub const CODE_INDENT: usize = 4;
+    ///
+    /// Four spaces, and spaces rather than a tab: the block's text is what gets
+    /// saved, and a document that renders differently depending on the reader's
+    /// tab width is one the author did not write.
+    pub const CODE_INDENT: usize = 4;
 
-/// The bindings an editor has unless it says otherwise. See
+    /// The bindings an editor has unless it says otherwise. See
     /// [`base_keymap`].
     #[must_use]
     pub fn base(schema: &crate::schema::Schema) -> Self {
@@ -131,7 +131,8 @@ pub const CODE_INDENT: usize = 4;
     pub fn bind(mut self, binding: Binding, command: Command) -> Self {
         match self.bindings.remove(&binding) {
             Some(existing) => {
-                self.bindings.insert(binding, chain(vec![existing, command]));
+                self.bindings
+                    .insert(binding, chain(vec![existing, command]));
             }
             None => {
                 self.bindings.insert(binding, command);
@@ -278,10 +279,7 @@ fn base_keymap(schema: &crate::schema::Schema) -> Keymap {
         (marks::CODE, 'e'),
     ] {
         if let Some(id) = mark(name) {
-            map = map.bind(
-                Binding::primary(Key::Char(key)),
-                cmd::toggle_mark(id, None),
-            );
+            map = map.bind(Binding::primary(Key::Char(key)), cmd::toggle_mark(id, None));
         }
     }
     if let Some(id) = mark(marks::STRIKETHROUGH) {

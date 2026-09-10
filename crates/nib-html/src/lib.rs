@@ -23,6 +23,7 @@
 
 pub mod parse;
 pub mod rules;
+pub mod styling;
 pub mod write;
 
 pub use parse::{parse, parse_slice};

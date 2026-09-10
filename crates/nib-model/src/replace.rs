@@ -46,11 +46,7 @@ pub enum ReplaceError {
 ///
 /// [`ReplaceError`] when the slice cannot be joined into the range — an open
 /// depth that does not match, or node types that cannot follow one another.
-pub fn replace(
-    from: &ResolvedPos,
-    to: &ResolvedPos,
-    slice: &Slice,
-) -> Result<Node, ReplaceError> {
+pub fn replace(from: &ResolvedPos, to: &ResolvedPos, slice: &Slice) -> Result<Node, ReplaceError> {
     if slice.open_start() > from.depth() {
         return Err(ReplaceError::TooDeep {
             open: slice.open_start(),
@@ -166,7 +162,10 @@ fn add_range(
     depth: usize,
     target: &mut Vec<Node>,
 ) {
-    let node = end.or(start).expect("at least one end is given").node(depth);
+    let node = end
+        .or(start)
+        .expect("at least one end is given")
+        .node(depth);
     let mut start_index = 0;
     let end_index = end.map_or_else(|| node.child_count(), |e| e.index(depth));
     if let Some(start) = start {

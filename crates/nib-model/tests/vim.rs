@@ -536,10 +536,9 @@ fn a_block_caret_says_which_mode_it_is() {
 
 fn code(lines: &[&str]) -> Node {
     let b = b();
-    b.doc(nodes![b.node(
-        nodes::CODE_BLOCK,
-        nodes![b.text(&lines.join("\n"))]
-    )])
+    b.doc(nodes![
+        b.node(nodes::CODE_BLOCK, nodes![b.text(&lines.join("\n"))])
+    ])
 }
 
 fn code_text(state: &EditorState) -> String {
@@ -552,7 +551,11 @@ fn j_moves_one_line_inside_a_code_block() {
     let mut vim = Vim::new(&basic::schema());
     let state = state_at(doc, 1);
     let after = keys(&state, &mut vim, "j");
-    assert_eq!(after.selection().head(), 5, "the start of `two`, not past the block");
+    assert_eq!(
+        after.selection().head(),
+        5,
+        "the start of `two`, not past the block"
+    );
 }
 
 #[test]
@@ -561,7 +564,11 @@ fn dollar_stops_at_the_end_of_a_code_line() {
     let mut vim = Vim::new(&basic::schema());
     let state = state_at(doc, 1);
     let after = keys(&state, &mut vim, "$");
-    assert_eq!(after.selection().head(), 4, "the end of `one`, not of the block");
+    assert_eq!(
+        after.selection().head(),
+        4,
+        "the end of `one`, not of the block"
+    );
 }
 
 #[test]

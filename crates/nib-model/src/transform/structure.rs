@@ -23,8 +23,8 @@ use crate::node::Node;
 use crate::resolve::NodeRange;
 use crate::schema::{NodeTypeId, Schema};
 use crate::slice::Slice;
-use crate::transform::step::{Step, StepError};
 use crate::transform::Transform;
+use crate::transform::step::{Step, StepError};
 
 /// A node type and the attributes to create it with — what a wrapping or a
 /// split names.
@@ -124,7 +124,8 @@ pub fn can_split(
     let base_type = types_after
         .and_then(|t| t.first().and_then(Option::as_ref))
         .map_or_else(|| at.node(base + 1).type_id(), |t| t.typ);
-    at.node(base).can_replace_with(index, index, base_type, None)
+    at.node(base)
+        .can_replace_with(index, index, base_type, None)
 }
 
 /// True when the two nodes on either side of `pos` can be joined into one.
@@ -224,7 +225,10 @@ pub fn find_wrapping(
     let around = find_wrapping_outside(schema, range, node_type)?;
     let inside = find_wrapping_inside(schema, inner_range, node_type)?;
     let mut wrapping: Vec<TypeAndAttrs> = around.into_iter().map(TypeAndAttrs::new).collect();
-    wrapping.push(TypeAndAttrs { typ: node_type, attrs });
+    wrapping.push(TypeAndAttrs {
+        typ: node_type,
+        attrs,
+    });
     wrapping.extend(inside.into_iter().map(TypeAndAttrs::new));
     Some(wrapping)
 }
@@ -268,12 +272,10 @@ fn find_wrapping_inside(
 #[must_use]
 pub fn insert_point(doc: &Node, pos: usize, typ: NodeTypeId) -> Option<usize> {
     let at = doc.resolve(pos);
-    if at.parent().can_replace_with(
-        at.index(at.depth()),
-        at.index(at.depth()),
-        typ,
-        None,
-    ) {
+    if at
+        .parent()
+        .can_replace_with(at.index(at.depth()), at.index(at.depth()), typ, None)
+    {
         return Some(pos);
     }
 
@@ -484,7 +486,10 @@ impl Transform {
         });
 
         for pos in targets {
-            let mapped = self.mapping().slice(map_from, self.mapping().len()).map(pos, 1);
+            let mapped = self
+                .mapping()
+                .slice(map_from, self.mapping().len())
+                .map(pos, 1);
             let doc = self.doc().clone();
             let Some(node) = doc.node_at(mapped) else {
                 continue;
@@ -624,7 +629,12 @@ impl Transform {
     /// # Errors
     ///
     /// [`StepError`] when a step does not apply.
-    pub fn add_mark(&mut self, from: usize, to: usize, mark: &Mark) -> Result<&mut Self, StepError> {
+    pub fn add_mark(
+        &mut self,
+        from: usize,
+        to: usize,
+        mark: &Mark,
+    ) -> Result<&mut Self, StepError> {
         let doc = self.doc().clone();
         let mut removed: Vec<Step> = Vec::new();
         let mut added: Vec<Step> = Vec::new();
@@ -647,7 +657,9 @@ impl Transform {
                 }
                 match removed.last_mut() {
                     Some(Step::RemoveMark {
-                        to: last_to, mark: m, ..
+                        to: last_to,
+                        mark: m,
+                        ..
                     }) if *last_to == start && m == existing => *last_to = end,
                     _ => removed.push(Step::RemoveMark {
                         from: start,

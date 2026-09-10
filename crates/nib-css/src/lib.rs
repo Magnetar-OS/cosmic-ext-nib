@@ -238,7 +238,10 @@ fn fetches(value: &str) -> bool {
     lower.contains("url(") || lower.contains("expression(") || lower.contains("javascript:")
 }
 
-#[allow(clippy::too_many_lines, reason = "one arm per property; a table would hide the value parsing")]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one arm per property; a table would hide the value parsing"
+)]
 fn apply(out: &mut Declarations, property: &str, value: &str) {
     if fetches(value) {
         out.refused.push(Refusal::Fetches {
@@ -324,12 +327,19 @@ fn font_scale(value: &str) -> Option<f32> {
     }
     if let Some(pt) = value.strip_suffix("pt") {
         // 1pt is 4/3 of a CSS pixel.
-        return pt.trim().parse::<f32>().ok().map(|p| p * 4.0 / 3.0 / NOMINAL_PX);
+        return pt
+            .trim()
+            .parse::<f32>()
+            .ok()
+            .map(|p| p * 4.0 / 3.0 / NOMINAL_PX);
     }
     // `smaller` and `larger` are relative to the parent in CSS; here they are
     // one step of the absolute scale, which is what they amount to in a
     // document whose parent is usually the reader's own size.
-    #[allow(clippy::match_same_arms, reason = "the keywords differ even where the ratios agree")]
+    #[allow(
+        clippy::match_same_arms,
+        reason = "the keywords differ even where the ratios agree"
+    )]
     match value {
         "xx-small" => Some(0.6),
         "x-small" => Some(0.75),

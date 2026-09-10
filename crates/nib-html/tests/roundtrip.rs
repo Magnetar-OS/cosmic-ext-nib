@@ -256,3 +256,134 @@ fn a_slice_written_back_keeps_its_marks() {
     let slice = h.parse_slice("some <strong>text</strong>");
     assert_eq!(h.slice_to_html(&slice), "some <strong>text</strong>");
 }
+
+// ---------------------------------------------------------------------------
+// Authored styling
+// ---------------------------------------------------------------------------
+
+use nib_model::basic::marks as m;
+
+/// Every mark on the first text node of the document.
+fn first_text_marks(doc: &nib_model::node::Node) -> Vec<String> {
+    fn walk(node: &nib_model::node::Node, out: &mut Option<Vec<String>>) {
+        if out.is_some() {
+            return;
+        }
+        if node.text().is_some() {
+            *out = Some(node.marks().iter().map(|k| k.name().to_owned()).collect());
+            return;
+        }
+        for child in node.content() {
+            walk(child, out);
+        }
+    }
+    let mut out = None;
+    walk(doc, &mut out);
+    out.unwrap_or_default()
+}
+
+#[test]
+fn a_colour_on_a_span_reaches_its_text() {
+    let html = Html::new(&basic::schema());
+    let doc = html.parse(r#"<p><span style="color: #cc0000">red</span></p>"#);
+    assert!(first_text_marks(&doc).contains(&m::TEXT_COLOR.to_owned()));
+}
+
+#[test]
+fn a_colour_on_a_transparent_element_still_reaches_its_text() {
+    // The case a tag-list would miss: `<div>` has no mark of its own, and its
+    // colour still belongs to the text inside it.
+    let html = Html::new(&basic::schema());
+    let doc = html.parse(r#"<div style="color: #cc0000"><p>red</p></div>"#);
+    assert!(first_text_marks(&doc).contains(&m::TEXT_COLOR.to_owned()));
+}
+
+#[test]
+fn css_weight_and_style_become_the_marks_that_already_exist() {
+    // Not a second way to say bold: `font-weight: bold` and `<b>` produce the
+    // same document, so they serialise to the same HTML.
+    let html = Html::new(&basic::schema());
+    let doc = html.parse(r#"<p><span style="font-weight:bold; font-style:italic">x</span></p>"#);
+    let marks = first_text_marks(&doc);
+    assert!(marks.contains(&m::STRONG.to_owned()), "{marks:?}");
+    assert!(marks.contains(&m::EM.to_owned()), "{marks:?}");
+    // Nested in the schema's mark order, which is fixed so that a diff of two
+    // exports shows what changed rather than how the marks were sorted.
+    assert_eq!(html.to_html(&doc), "<p><em><strong>x</strong></em></p>");
+}
+
+#[test]
+fn the_presentational_attributes_are_read_too() {
+    // Mail generators target twenty-year-old clients; these are not historical
+    // curiosities in an inbox.
+    let html = Html::new(&basic::schema());
+    let doc = html.parse(r##"<p><font color="#cc0000" size="5">big red</font></p>"##);
+    let marks = first_text_marks(&doc);
+    assert!(marks.contains(&m::TEXT_COLOR.to_owned()), "{marks:?}");
+    assert!(marks.contains(&m::FONT_SIZE.to_owned()), "{marks:?}");
+}
+
+#[test]
+fn a_style_declaration_beats_the_attribute_beside_it() {
+    let html = Html::new(&basic::schema());
+    let doc = html.parse(r##"<p><font color="#00ff00" style="color:#cc0000">x</font></p>"##);
+    let out = html.to_html(&doc);
+    assert!(out.contains("#cc0000"), "{out}");
+    assert!(!out.contains("#00ff00"), "{out}");
+}
+
+#[test]
+fn a_colour_round_trips_as_one_normalised_spelling() {
+    // `red`, `#f00` and `rgb(255,0,0)` are one colour. A document in which
+    // they are three values is one where two identical spans will not merge.
+    let html = Html::new(&basic::schema());
+    for spelling in ["red", "#f00", "#ff0000", "rgb(255, 0, 0)"] {
+        let doc = html.parse(&format!(
+            r#"<p><span style="color: {spelling}">x</span></p>"#
+        ));
+        assert_eq!(
+            html.to_html(&doc),
+            r#"<p><span style="color: #ff0000">x</span></p>"#,
+            "{spelling} did not normalise"
+        );
+    }
+}
+
+#[test]
+fn alignment_lands_on_the_block_not_the_text() {
+    let html = Html::new(&basic::schema());
+    let doc = html.parse(r#"<p style="text-align: center">middle</p>"#);
+    let paragraph = doc.child(0).expect("a paragraph");
+    assert_eq!(
+        paragraph.attrs().get_str(nib_model::basic::attrs::ALIGN),
+        Some("center")
+    );
+}
+
+#[test]
+fn a_style_that_would_fetch_leaves_no_trace_in_the_document() {
+    let html = Html::new(&basic::schema());
+    let doc = html.parse(r#"<p style="background: url(https://tracker.example/p.gif)">x</p>"#);
+    let out = html.to_html(&doc);
+    assert!(!out.contains("tracker.example"), "{out}");
+    assert!(!out.contains("url("), "{out}");
+}
+
+#[test]
+fn a_style_that_would_hide_is_not_obeyed() {
+    // The text stays readable. Honouring this would reintroduce the attack
+    // that text extraction exists to expose.
+    let html = Html::new(&basic::schema());
+    let doc = html.parse(r#"<p><span style="display:none">secret</span></p>"#);
+    assert_eq!(doc.text_content(), "secret");
+}
+
+#[test]
+fn a_font_size_goes_out_as_the_ratio_it_came_in_as() {
+    let html = Html::new(&basic::schema());
+    let doc = html.parse(r#"<p><span style="font-size: 150%">big</span></p>"#);
+    assert_eq!(
+        html.to_html(&doc),
+        r#"<p><span style="font-size: 150%">big</span></p>"#
+    );
+}

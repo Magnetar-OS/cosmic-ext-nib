@@ -59,6 +59,15 @@ pub mod nodes {
 }
 
 /// The mark type names this schema declares, in rank order.
+/// Attribute names that more than one node type carries.
+pub mod attrs {
+    /// How a block's text is aligned: `left`, `center`, `right`, `justify`.
+    ///
+    /// Null when the author said nothing, which is what lets the reader's own
+    /// direction decide instead of the sender's.
+    pub const ALIGN: &str = "align";
+}
+
 pub mod marks {
     pub const LINK: &str = "link";
     pub const EM: &str = "em";
@@ -66,6 +75,21 @@ pub mod marks {
     pub const UNDERLINE: &str = "underline";
     pub const STRIKETHROUGH: &str = "strikethrough";
     pub const CODE: &str = "code";
+    /// A colour the author chose, as the CSS text they wrote.
+    ///
+    /// The *text*, not a parsed colour, because a mark's attributes are what
+    /// serialise back out: keeping `#c00` means the HTML that comes out says
+    /// what the HTML that went in said. The view parses it — and decides
+    /// whether it is legible against what it is drawing on, which is a
+    /// question only the view can answer.
+    pub const TEXT_COLOR: &str = "text_color";
+    /// A background the author chose, as the CSS text they wrote.
+    pub const BACKGROUND_COLOR: &str = "background_color";
+    /// A size relative to the reader's own, as a multiplier.
+    ///
+    /// Never an absolute size. A sender does not know the reader's base size
+    /// or their display, so what is carried is the ratio they chose.
+    pub const FONT_SIZE: &str = "font_size";
 }
 
 /// The standard schema.
@@ -95,7 +119,15 @@ fn build() -> Schema {
         .node(nodes::DOC, NodeSpec::new().content("block+"))
         .node(
             nodes::PARAGRAPH,
-            NodeSpec::new().content("inline*").group("block"),
+            NodeSpec::new()
+                .content("inline*")
+                .group("block")
+                // `null` rather than `"left"`: absent means the author said
+                // nothing, which is not the same as their having asked for the
+                // default. A reader in a right-to-left locale wants its own
+                // default, not the sender's assumption about which side text
+                // starts on.
+                .attr(attrs::ALIGN, AttrSpec::new(Value::Null)),
         )
         .node(
             nodes::HEADING,
@@ -103,7 +135,8 @@ fn build() -> Schema {
                 .content("inline*")
                 .group("block")
                 .defining()
-                .attr("level", AttrSpec::new(1_i64)),
+                .attr("level", AttrSpec::new(1_i64))
+                .attr(attrs::ALIGN, AttrSpec::new(Value::Null)),
         )
         .node(
             nodes::BLOCKQUOTE,
@@ -122,10 +155,7 @@ fn build() -> Schema {
                 .defining()
                 .attr("language", AttrSpec::new(Value::Null)),
         )
-        .node(
-            nodes::HORIZONTAL_RULE,
-            NodeSpec::new().group("block"),
-        )
+        .node(nodes::HORIZONTAL_RULE, NodeSpec::new().group("block"))
         .node(
             nodes::BULLET_LIST,
             NodeSpec::new().content("list_item+").group("block"),
@@ -183,10 +213,7 @@ fn build() -> Schema {
                 .attr("rowspan", AttrSpec::new(1_i64))
                 .attr("align", AttrSpec::new(Value::Null)),
         )
-        .node(
-            nodes::TEXT,
-            NodeSpec::new().inline().group("inline"),
-        )
+        .node(nodes::TEXT, NodeSpec::new().inline().group("inline"))
         .node(
             nodes::IMAGE,
             NodeSpec::new()
@@ -212,6 +239,27 @@ fn build() -> Schema {
         .mark(marks::UNDERLINE, MarkSpec::new())
         .mark(marks::STRIKETHROUGH, MarkSpec::new())
         .mark(marks::CODE, MarkSpec::new().code().excludes("_"))
+        // Authored styling. Each excludes itself, so a nested `<span
+        // style="color:red">` inside a red one leaves one mark rather than
+        // two — the inner colour wins, the way CSS says it does.
+        .mark(
+            marks::TEXT_COLOR,
+            MarkSpec::new()
+                .excludes(marks::TEXT_COLOR)
+                .attr("value", AttrSpec::required()),
+        )
+        .mark(
+            marks::BACKGROUND_COLOR,
+            MarkSpec::new()
+                .excludes(marks::BACKGROUND_COLOR)
+                .attr("value", AttrSpec::required()),
+        )
+        .mark(
+            marks::FONT_SIZE,
+            MarkSpec::new()
+                .excludes(marks::FONT_SIZE)
+                .attr("scale", AttrSpec::required()),
+        )
         .build()
         .expect("the standard schema is fixed and is covered by tests")
 }

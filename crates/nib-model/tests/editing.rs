@@ -5,13 +5,12 @@
 
 use nib_model::basic::{self, marks, nodes};
 use nib_model::build::Builder;
-use nib_model::commands as cmd;
 use nib_model::history::{self, History};
 use nib_model::keymap::{Binding, Key, Keymap, Mods};
 use nib_model::node::Node;
 use nib_model::schema::Schema;
 use nib_model::state::{EditorState, Selection};
-use nib_model::{attrs, nodes};
+use nib_model::{attrs, commands as cmd, nodes};
 
 fn schema() -> Schema {
     basic::schema()
@@ -86,16 +85,14 @@ fn typing_inserts_at_the_caret_and_moves_it() {
 #[test]
 fn typing_over_a_selection_replaces_it() {
     let doc = one_paragraph("hello world");
-    let state = EditorState::with_selection(
-        schema(),
-        doc,
-        Selection::text(1, 6),
-        Vec::new(),
-    );
+    let state = EditorState::with_selection(schema(), doc, Selection::text(1, 6), Vec::new());
     let mut tr = state.tr();
     tr.insert_text("goodbye").unwrap();
     let state = state.applied(tr);
-    assert_eq!(state.doc().to_string(), r#"doc(paragraph("goodbye world"))"#);
+    assert_eq!(
+        state.doc().to_string(),
+        r#"doc(paragraph("goodbye world"))"#
+    );
     assert_eq!(state.selection().cursor_pos(), Some(8));
 }
 
@@ -111,7 +108,11 @@ fn enter_splits_a_paragraph_and_leaves_the_caret_in_the_second() {
         state.doc().to_string(),
         r#"doc(paragraph("hello"), paragraph(" world"))"#
     );
-    assert_eq!(state.selection().cursor_pos(), Some(8), "in the second block");
+    assert_eq!(
+        state.selection().cursor_pos(),
+        Some(8),
+        "in the second block"
+    );
 }
 
 #[test]
@@ -151,10 +152,7 @@ fn enter_in_an_empty_list_item_leaves_the_list() {
                 nodes::LIST_ITEM,
                 nodes![b.node(nodes::PARAGRAPH, nodes![b.text("one")])]
             ),
-            b.node(
-                nodes::LIST_ITEM,
-                nodes![b.node(nodes::PARAGRAPH, nodes![])]
-            ),
+            b.node(nodes::LIST_ITEM, nodes![b.node(nodes::PARAGRAPH, nodes![])]),
         ]
     )]);
     // Inside the empty second item's paragraph.
@@ -242,7 +240,10 @@ fn toggling_bold_on_a_selection_applies_and_removes_it() {
     let bold = cmd::toggle_mark(mark_id(marks::STRONG), None);
 
     let state = run(&state, &bold);
-    assert_eq!(state.doc().to_string(), r#"doc(paragraph(strong("hello")))"#);
+    assert_eq!(
+        state.doc().to_string(),
+        r#"doc(paragraph(strong("hello")))"#
+    );
 
     let state = run(&state, &bold);
     assert_eq!(state.doc().to_string(), r#"doc(paragraph("hello"))"#);
@@ -290,7 +291,10 @@ fn tab_indents_a_list_item_and_shift_tab_outdents_it() {
 
     let lifted = run(&sunk, &cmd::lift_list_item(id(nodes::LIST_ITEM)));
     assert_eq!(lifted.doc().check(), Ok(()));
-    assert_eq!(lifted.doc().to_string(), a_list(&["one", "two"]).to_string());
+    assert_eq!(
+        lifted.doc().to_string(),
+        a_list(&["one", "two"]).to_string()
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -324,7 +328,10 @@ fn typing_in_quick_succession_is_one_undo() {
     }
     assert_eq!(state.doc().to_string(), r#"doc(paragraph("hello"))"#);
     assert_eq!(
-        state.plugin_state::<History>(history::KEY).unwrap().undo_depth(),
+        state
+            .plugin_state::<History>(history::KEY)
+            .unwrap()
+            .undo_depth(),
         1,
         "five keystrokes half a second apart are one event"
     );
@@ -343,7 +350,10 @@ fn a_pause_starts_a_new_undo_event() {
         state = state.applied(tr);
     }
     assert_eq!(
-        state.plugin_state::<History>(history::KEY).unwrap().undo_depth(),
+        state
+            .plugin_state::<History>(history::KEY)
+            .unwrap()
+            .undo_depth(),
         2
     );
     let undone = run(&state, &cmd::undo());
@@ -395,7 +405,10 @@ fn the_default_keymap_binds_the_keys_an_editor_has() {
         Binding::primary(Key::Char('z')),
         Binding::plain(Key::Tab),
     ] {
-        assert!(map.command(&binding).is_some(), "{binding:?} should be bound");
+        assert!(
+            map.command(&binding).is_some(),
+            "{binding:?} should be bound"
+        );
     }
 }
 
@@ -405,7 +418,10 @@ fn pressing_ctrl_b_over_a_selection_bolds_it() {
     let doc = one_paragraph("hello");
     let state = EditorState::with_selection(schema(), doc, Selection::text(1, 6), Vec::new());
     let state = press(&state, &map, &Binding::primary(Key::Char('b')));
-    assert_eq!(state.doc().to_string(), r#"doc(paragraph(strong("hello")))"#);
+    assert_eq!(
+        state.doc().to_string(),
+        r#"doc(paragraph(strong("hello")))"#
+    );
 }
 
 #[test]
@@ -475,12 +491,7 @@ fn tab_in_code_inserts_spaces_at_the_caret() {
 fn tab_over_several_lines_indents_each_of_them() {
     let doc = code_block("one\ntwo\nthree");
     // From inside the first line to inside the second.
-    let state = EditorState::with_selection(
-        schema(),
-        doc,
-        Selection::text(2, 6),
-        Vec::new(),
-    );
+    let state = EditorState::with_selection(schema(), doc, Selection::text(2, 6), Vec::new());
     let state = run(&state, &cmd::indent_code(2));
     assert_eq!(state.doc().text_content(), "  one\n  two\nthree");
 }
@@ -488,12 +499,7 @@ fn tab_over_several_lines_indents_each_of_them() {
 #[test]
 fn shift_tab_removes_up_to_one_indent_and_no_more() {
     let doc = code_block("      deep\n  shallow");
-    let state = EditorState::with_selection(
-        schema(),
-        doc,
-        Selection::text(2, 14),
-        Vec::new(),
-    );
+    let state = EditorState::with_selection(schema(), doc, Selection::text(2, 14), Vec::new());
     let state = run(&state, &cmd::outdent_code(4));
     assert_eq!(
         state.doc().text_content(),
@@ -529,7 +535,10 @@ fn tab_indents_code_and_a_list_item_by_the_same_key() {
     let state = state_at(a_list(&["one", "two"]), 11);
     let state = press(&state, &map, &tab);
     assert!(
-        state.doc().to_string().contains("bullet_list(list_item(paragraph(\"one\")"),
+        state
+            .doc()
+            .to_string()
+            .contains("bullet_list(list_item(paragraph(\"one\")"),
         "{}",
         state.doc()
     );

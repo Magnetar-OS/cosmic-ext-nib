@@ -554,9 +554,10 @@ impl fmt::Display for ContentExpr {
 /// declare a document but never create one, and it is far better to say so at
 /// build time than to have `create_and_fill` quietly return `None` forever.
 fn required_positions(states: &[DfaState]) -> impl Iterator<Item = Vec<NodeTypeId>> + '_ {
-    states.iter().filter(|s| !s.valid_end).map(|s| {
-        s.next.iter().map(|(t, _)| *t).collect()
-    })
+    states
+        .iter()
+        .filter(|s| !s.valid_end)
+        .map(|s| s.next.iter().map(|(t, _)| *t).collect())
 }
 
 /// Subset construction: each DFA state is a set of NFA states.
@@ -579,7 +580,9 @@ fn subset_construct(nfa: &Nfa, accept: usize) -> Vec<DfaState> {
         for &node in &set {
             for edge in &nfa.nodes[node] {
                 let Some(term) = edge.term else { continue };
-                let slot = if let Some((_, slot)) = out.iter_mut().find(|(t, _)| *t == term) { slot } else {
+                let slot = if let Some((_, slot)) = out.iter_mut().find(|(t, _)| *t == term) {
+                    slot
+                } else {
                     out.push((term, Vec::new()));
                     &mut out.last_mut().expect("just pushed").1
                 };
@@ -707,7 +710,12 @@ impl ContentMatch {
     /// Advances past `fragment[start..end]`, or `None` at the first child that
     /// is not allowed.
     #[must_use]
-    pub fn match_fragment_range(&self, fragment: &Fragment, start: usize, end: usize) -> Option<Self> {
+    pub fn match_fragment_range(
+        &self,
+        fragment: &Fragment,
+        start: usize,
+        end: usize,
+    ) -> Option<Self> {
         let mut cur = self.clone();
         for i in start..end {
             cur = cur.match_type(fragment.child(i)?.type_id())?;
@@ -775,8 +783,7 @@ impl ContentMatch {
         start_index: usize,
         seen: &mut Vec<usize>,
     ) -> Option<Fragment> {
-        if let Some(finished) =
-            self.match_fragment_range(after, start_index, after.child_count())
+        if let Some(finished) = self.match_fragment_range(after, start_index, after.child_count())
             && (!to_end || finished.valid_end())
         {
             return Some(Fragment::empty());

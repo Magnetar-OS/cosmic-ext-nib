@@ -322,7 +322,11 @@ impl<'a> Fitter<'a> {
             self.unplaced = Slice::new(
                 drop_from_fragment(&content, open_start - 1, 1),
                 open_start - 1,
-                if open_at_end { open_start - 1 } else { open_end },
+                if open_at_end {
+                    open_start - 1
+                } else {
+                    open_end
+                },
             );
         } else {
             self.unplaced = Slice::new(
@@ -464,8 +468,15 @@ impl<'a> Fitter<'a> {
         let (top_type, top_match) = &self.frontier[self.depth()];
         let top_type = self.schema.node_type(*top_type);
         if !top_type.is_textblock()
-            || content_after_fits(self.schema, &self.to, self.to.depth(), top_type, top_match, false)
-                .is_none()
+            || content_after_fits(
+                self.schema,
+                &self.to,
+                self.to.depth(),
+                top_type,
+                top_match,
+                false,
+            )
+            .is_none()
         {
             return None;
         }
@@ -493,11 +504,8 @@ impl<'a> Fitter<'a> {
         'scan: for i in (0..=self.depth().min(to.depth())).rev() {
             let (typ, matched) = &self.frontier[i];
             let typ = self.schema.node_type(*typ);
-            let drop_inner =
-                i < to.depth() && to.end(i + 1) == to.pos() + (to.depth() - (i + 1));
-            let Some(fit) =
-                content_after_fits(self.schema, to, i, typ, matched, drop_inner)
-            else {
+            let drop_inner = i < to.depth() && to.end(i + 1) == to.pos() + (to.depth() - (i + 1));
+            let Some(fit) = content_after_fits(self.schema, to, i, typ, matched, drop_inner) else {
                 continue;
             };
             for d in (0..i).rev() {
@@ -620,7 +628,11 @@ fn close_node_start(schema: &Schema, node: &Node, open_start: usize, open_end: i
             schema,
             first,
             open_start - 1,
-            if frag.child_count() == 1 { open_end - 1 } else { 0 },
+            if frag.child_count() == 1 {
+                open_end - 1
+            } else {
+                0
+            },
         );
         frag = frag.replace_child(0, inner);
     }

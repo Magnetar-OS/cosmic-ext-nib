@@ -84,9 +84,9 @@ impl<'a> Ctx<'a> {
 
     /// Whether the innermost open node's schema permits this mark type.
     fn allows_mark(&self, mark: nib_model::schema::MarkTypeId) -> bool {
-        self.stack.last().is_some_and(|o| {
-            self.rules.schema().node_type(o.typ).allows_mark_type(mark)
-        })
+        self.stack
+            .last()
+            .is_some_and(|o| self.rules.schema().node_type(o.typ).allows_mark_type(mark))
     }
 
     /// Opens a node context.
@@ -203,11 +203,7 @@ impl<'a> Ctx<'a> {
             && node.is_text()
             && last.same_markup(&node)
         {
-            let joined = format!(
-                "{}{}",
-                last.text().unwrap_or(""),
-                node.text().unwrap_or("")
-            );
+            let joined = format!("{}{}", last.text().unwrap_or(""), node.text().unwrap_or(""));
             let merged = last.with_text(joined);
             let index = open.content.len() - 1;
             open.content[index] = merged;
@@ -315,66 +311,98 @@ fn walk(ctx: &mut Ctx<'_>, handle: &Handle) {
                 children: child_elements(handle),
                 attrs: attrs.clone(),
             };
+            // Styling first, and for *every* element rather than only the ones
+            // a rule names: a `<div style="color:#c00">` has no mark of its
+            // own — it is transparent — and its colour still belongs to the
+            // text inside it. Read before the rule is looked up so the two
+            // cannot disagree about which elements are styled.
+            let styling = crate::styling::of(ctx.rules.schema(), &element);
+            let outer_marks = ctx.marks.clone();
+            for mark in &styling.marks {
+                ctx.marks = Mark::add_to_set(mark, &ctx.marks);
+            }
+
             let Some(rule) = ctx.rules.rule_for(&tag, &attrs) else {
                 // An unknown tag is a container, not content. Dropping it
                 // outright would lose text; treating it as its own node would
                 // invent structure the schema never declared.
                 walk_children(ctx, handle);
+                ctx.marks = outer_marks;
                 return;
             };
-            match rule.target.clone() {
-                Target::Ignore => {}
-                Target::Transparent => walk_children(ctx, handle),
-                Target::Mark(id) => {
-                    // A mark the surrounding node forbids is not applied — the
-                    // element becomes transparent. This is what makes
-                    // `<pre><code>` one code block rather than a code block
-                    // full of inline code, without a special case for it.
-                    if !ctx.allows_mark(id) {
-                        walk_children(ctx, handle);
-                        return;
-                    }
-                    let mark_attrs = rule.attrs.as_ref().and_then(|f| f(&element));
-                    let Ok(mark) = ctx
-                        .rules
-                        .schema()
-                        .mark_by_id(id, mark_attrs.as_ref())
-                    else {
-                        walk_children(ctx, handle);
-                        return;
-                    };
-                    let outer = ctx.marks.clone();
-                    ctx.marks = Mark::add_to_set(&mark, &outer);
-                    walk_children(ctx, handle);
-                    ctx.marks = outer;
-                }
-                Target::Node(id) => {
-                    let node_attrs = rule
-                        .attrs
-                        .as_ref()
-                        .and_then(|f| f(&element))
-                        .unwrap_or_else(Attrs::none);
-                    let schema = ctx.rules.schema().clone();
-                    if schema.node_type(id).is_leaf() {
-                        if let Ok(node) =
-                            schema.create(id, Some(&node_attrs), Fragment::empty(), Marks::none())
-                        {
-                            ctx.add(node);
-                        }
-                        return;
-                    }
-                    let depth = ctx.depth();
-                    ctx.open(id, node_attrs);
-                    // A block boundary breaks a run of inline whitespace.
-                    ctx.pending_space = false;
-                    walk_children(ctx, handle);
-                    ctx.close_to(depth);
-                    ctx.pending_space = false;
-                }
-            }
+            walk_rule(ctx, handle, &element, rule, &styling);
+            ctx.marks = outer_marks;
         }
         NodeData::Document | NodeData::Doctype { .. } => walk_children(ctx, handle),
         NodeData::Comment { .. } | NodeData::ProcessingInstruction { .. } => {}
+    }
+}
+
+/// What one element's rule does, with its styling already on the mark stack.
+fn walk_rule(
+    ctx: &mut Ctx<'_>,
+    handle: &Handle,
+    element: &Element,
+    rule: &crate::rules::ParseRule,
+    styling: &crate::styling::Styling,
+) {
+    match rule.target.clone() {
+        Target::Ignore => {}
+        Target::Transparent => walk_children(ctx, handle),
+        Target::Mark(id) => {
+            // A mark the surrounding node forbids is not applied — the
+            // element becomes transparent. This is what makes
+            // `<pre><code>` one code block rather than a code block
+            // full of inline code, without a special case for it.
+            if !ctx.allows_mark(id) {
+                walk_children(ctx, handle);
+                return;
+            }
+            let mark_attrs = rule.attrs.as_ref().and_then(|f| f(element));
+            let Ok(mark) = ctx.rules.schema().mark_by_id(id, mark_attrs.as_ref()) else {
+                walk_children(ctx, handle);
+                return;
+            };
+            let outer = ctx.marks.clone();
+            ctx.marks = Mark::add_to_set(&mark, &outer);
+            walk_children(ctx, handle);
+            ctx.marks = outer;
+        }
+        Target::Node(id) => {
+            let mut node_attrs = rule
+                .attrs
+                .as_ref()
+                .and_then(|f| f(element))
+                .unwrap_or_else(Attrs::none);
+            let schema = ctx.rules.schema().clone();
+            // Alignment is a block property, so it lands on the node
+            // rather than on the text inside it — and only where the
+            // schema declared somewhere to put it.
+            if let Some(align) = styling.align
+                && schema
+                    .node_type(id)
+                    .spec()
+                    .attrs
+                    .contains_key(nib_model::basic::attrs::ALIGN)
+            {
+                node_attrs = node_attrs.set(nib_model::basic::attrs::ALIGN, align.as_str());
+            }
+            if schema.node_type(id).is_leaf() {
+                if let Ok(node) =
+                    schema.create(id, Some(&node_attrs), Fragment::empty(), Marks::none())
+                {
+                    ctx.add(node);
+                }
+                return;
+            }
+            let depth = ctx.depth();
+            ctx.open(id, node_attrs);
+            // A block boundary breaks a run of inline whitespace.
+            ctx.pending_space = false;
+            walk_children(ctx, handle);
+            ctx.close_to(depth);
+            ctx.pending_space = false;
+        }
     }
 }
 
@@ -438,8 +466,21 @@ pub fn parse_slice(rules: &Rules, html: &str) -> Slice {
 fn html_looks_like_blocks(html: &str) -> bool {
     let lower = html.to_ascii_lowercase();
     [
-        "<p", "<div", "<h1", "<h2", "<h3", "<h4", "<h5", "<h6", "<ul", "<ol", "<li",
-        "<blockquote", "<pre", "<table", "<hr",
+        "<p",
+        "<div",
+        "<h1",
+        "<h2",
+        "<h3",
+        "<h4",
+        "<h5",
+        "<h6",
+        "<ul",
+        "<ol",
+        "<li",
+        "<blockquote",
+        "<pre",
+        "<table",
+        "<hr",
     ]
     .iter()
     .any(|tag| lower.contains(tag))

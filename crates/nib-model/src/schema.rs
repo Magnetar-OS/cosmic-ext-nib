@@ -684,7 +684,12 @@ impl Schema {
     /// If a required attribute is missing.
     pub fn mark_by_id(&self, id: MarkTypeId, attrs: Option<&Attrs>) -> Result<Mark, SchemaError> {
         let typ = self.mark_type(id);
-        let attrs = compute_attrs(&typ.spec.attrs, typ.default_attrs.as_ref(), attrs, &typ.name)?;
+        let attrs = compute_attrs(
+            &typ.spec.attrs,
+            typ.default_attrs.as_ref(),
+            attrs,
+            &typ.name,
+        )?;
         Ok(Mark::new(Arc::clone(typ), attrs))
     }
 
@@ -925,9 +930,7 @@ impl SchemaBuilder {
         // The text node is not optional. Every schema has inline content
         // somewhere, and the alternative to requiring it here is discovering
         // its absence at the first keystroke.
-        let text = *node_by_name
-            .get(TEXT)
-            .ok_or(SchemaError::MissingText)?;
+        let text = *node_by_name.get(TEXT).ok_or(SchemaError::MissingText)?;
         if !nodes[text].spec.inline || nodes[text].spec.content.is_some() {
             return Err(SchemaError::BadText);
         }
@@ -953,12 +956,13 @@ impl SchemaBuilder {
             let expr = if source.trim().is_empty() {
                 ContentExpr::empty()
             } else {
-                let expr = ContentExpr::compile(source, &node_by_name, &groups).map_err(
-                    |source| SchemaError::Content {
-                        node: node.name.to_string(),
-                        source,
-                    },
-                )?;
+                let expr =
+                    ContentExpr::compile(source, &node_by_name, &groups).map_err(|source| {
+                        SchemaError::Content {
+                            node: node.name.to_string(),
+                            source,
+                        }
+                    })?;
                 // Now that every node type exists, the expression can be held
                 // to a standard it could not be held to while compiling: that
                 // each position it *requires* can actually be filled.

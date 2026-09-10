@@ -301,7 +301,12 @@ impl Transaction {
     /// # Errors
     ///
     /// [`StepError`] when it does not apply.
-    pub fn replace(&mut self, from: usize, to: usize, slice: Slice) -> Result<&mut Self, StepError> {
+    pub fn replace(
+        &mut self,
+        from: usize,
+        to: usize,
+        slice: Slice,
+    ) -> Result<&mut Self, StepError> {
         self.with(|t| t.replace(from, to, slice).map(|_| ()))
     }
 
@@ -455,7 +460,12 @@ impl Transaction {
     /// # Errors
     ///
     /// [`StepError`] when a step does not apply.
-    pub fn add_mark(&mut self, from: usize, to: usize, mark: &Mark) -> Result<&mut Self, StepError> {
+    pub fn add_mark(
+        &mut self,
+        from: usize,
+        to: usize,
+        mark: &Mark,
+    ) -> Result<&mut Self, StepError> {
         self.with(|t| t.add_mark(from, to, mark).map(|_| ()))
     }
 

@@ -12,9 +12,8 @@ fn gfm() -> Markdown {
 
 fn components(dialect: Dialect) -> Markdown {
     static SCHEMA: std::sync::OnceLock<Schema> = std::sync::OnceLock::new();
-    let schema = SCHEMA.get_or_init(|| {
-        with_components(&basic::schema()).expect("the component schema compiles")
-    });
+    let schema = SCHEMA
+        .get_or_init(|| with_components(&basic::schema()).expect("the component schema compiles"));
     Markdown::new(schema, dialect)
 }
 
@@ -157,7 +156,11 @@ fn markdown_around_an_mdc_component_is_still_markdown() {
     let md = components(Dialect::Mdc);
     let doc = md.parse("# Before\n\n::card\ninner\n::\n\nAfter.\n");
     assert_eq!(doc.check(), Ok(()));
-    let names: Vec<&str> = doc.content().iter().map(nib_model::Node::type_name).collect();
+    let names: Vec<&str> = doc
+        .content()
+        .iter()
+        .map(nib_model::Node::type_name)
+        .collect();
     assert_eq!(names, ["heading", "component_block", "paragraph"]);
 }
 
@@ -182,7 +185,10 @@ fn mdx_module_lines_are_kept_verbatim() {
     assert_eq!(doc.check(), Ok(()));
     let esm = doc.child(0).expect("the import");
     assert_eq!(esm.type_name(), "esm");
-    assert_eq!(esm.attrs().get_str("source"), Some("import Card from './card'"));
+    assert_eq!(
+        esm.attrs().get_str("source"),
+        Some("import Card from './card'")
+    );
 }
 
 #[test]

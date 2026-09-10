@@ -784,7 +784,11 @@ impl Vim {
         // it belongs to the *deletion* — a put opens its own line to go on, so
         // a register that carried one would put two.
         let register = if held == Held::Line {
-            Some(doc.slice(motion::line_start(doc, low), motion::line_end(doc, high), false))
+            Some(doc.slice(
+                motion::line_start(doc, low),
+                motion::line_end(doc, high),
+                false,
+            ))
         } else {
             None
         };
@@ -800,7 +804,10 @@ impl Vim {
                     if end < motion::block_end(doc, high) {
                         (start, end + 1)
                     } else {
-                        (start.saturating_sub(1).max(motion::block_start(doc, low)), end)
+                        (
+                            start.saturating_sub(1).max(motion::block_start(doc, low)),
+                            end,
+                        )
                     }
                 }
             }

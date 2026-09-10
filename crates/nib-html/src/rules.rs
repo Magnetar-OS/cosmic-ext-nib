@@ -378,10 +378,7 @@ pub fn base(schema: &Schema) -> Rules {
     if let Some(id) = node(nodes::TABLE_ROW) {
         rules = rules.node(id, "tr");
     }
-    for (name, tag) in [
-        (nodes::TABLE_CELL, "td"),
-        (nodes::TABLE_HEADER, "th"),
-    ] {
+    for (name, tag) in [(nodes::TABLE_CELL, "td"), (nodes::TABLE_HEADER, "th")] {
         if let Some(id) = node(name) {
             rules = rules
                 .parsing(ParseRule::new(tag, Target::Node(id)).reading(|el| Some(span_attrs(el))))
@@ -446,17 +443,51 @@ pub fn base(schema: &Schema) -> Rules {
     if let Some(id) = mark(marks::CODE) {
         rules = rules.mark(id, "code");
     }
+
+    // Authored styling goes back out as `<span style>`, never as the `<font>`
+    // or `bgcolor` it may have arrived as. Reading many spellings and writing
+    // one is the point of having a model in the middle: what comes out says
+    // what the document means, not what its author's generator happened to
+    // emit in 2004.
+    //
+    // There is no `parsing` rule here — `styling::of` reads `style=` off every
+    // element, not off a list of tags, so a colour on a `<div>` or a `<td>`
+    // reaches its text the same way one on a `<span>` does.
+    if let Some(id) = mark(marks::TEXT_COLOR) {
+        rules = rules.writing_mark(
+            id,
+            WriteRule::new("span").writing(|attrs| style_attr("color", attrs.get_str("value"))),
+        );
+    }
+    if let Some(id) = mark(marks::BACKGROUND_COLOR) {
+        rules = rules.writing_mark(
+            id,
+            WriteRule::new("span")
+                .writing(|attrs| style_attr("background-color", attrs.get_str("value"))),
+        );
+    }
+    if let Some(id) = mark(marks::FONT_SIZE) {
+        rules = rules.writing_mark(
+            id,
+            WriteRule::new("span").writing(|attrs| {
+                let Some(scale) = attrs.get_float("scale") else {
+                    return BTreeMap::new();
+                };
+                // Back out as a percentage, which is what it always was: the
+                // ratio the author chose, not a measurement in anyone's pixels.
+                style_attr("font-size", Some(&format!("{:.0}%", scale * 100.0)))
+            }),
+        );
+    }
     if let Some(id) = mark(marks::LINK) {
         rules = rules
-            .parsing(
-                ParseRule::new("a", Target::Mark(id)).reading(|el| {
-                    let mut out = nib_model::attrs! { "href" => el.attr("href")? };
-                    if let Some(title) = el.attr("title") {
-                        out = out.set("title", title);
-                    }
-                    Some(out)
-                }),
-            )
+            .parsing(ParseRule::new("a", Target::Mark(id)).reading(|el| {
+                let mut out = nib_model::attrs! { "href" => el.attr("href")? };
+                if let Some(title) = el.attr("title") {
+                    out = out.set("title", title);
+                }
+                Some(out)
+            }))
             .writing_mark(
                 id,
                 WriteRule::new("a").writing(|attrs| {
@@ -474,17 +505,45 @@ pub fn base(schema: &Schema) -> Rules {
     }
 
     // -- dropped and skipped -----------------------------------------------
-    for tag in ["script", "style", "head", "meta", "link", "title", "noscript"] {
+    for tag in [
+        "script", "style", "head", "meta", "link", "title", "noscript",
+    ] {
         rules = rules.parsing(ParseRule::new(tag, Target::Ignore).priority(100));
     }
     for tag in [
-        "div", "span", "section", "article", "main", "header", "footer", "nav", "aside", "body",
-        "html", "font", "center", "small", "big", "figure", "figcaption", "picture", "source",
+        "div",
+        "span",
+        "section",
+        "article",
+        "main",
+        "header",
+        "footer",
+        "nav",
+        "aside",
+        "body",
+        "html",
+        "font",
+        "center",
+        "small",
+        "big",
+        "figure",
+        "figcaption",
+        "picture",
+        "source",
     ] {
         rules = rules.parsing(ParseRule::new(tag, Target::Transparent).priority(-10));
     }
 
     rules
+}
+
+/// One declaration, as the `style` attribute a span carries.
+fn style_attr(property: &str, value: Option<&str>) -> ElementAttrs {
+    let mut out = BTreeMap::new();
+    if let Some(value) = value {
+        out.insert("style".to_owned(), format!("{property}: {value}"));
+    }
+    out
 }
 
 fn span_attrs(el: &Element) -> Attrs {

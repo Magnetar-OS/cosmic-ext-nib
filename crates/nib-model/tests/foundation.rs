@@ -51,7 +51,10 @@ fn a_content_expression_naming_nothing_is_refused() {
     let SchemaError::Content { source, .. } = err else {
         panic!("expected a content error, got {err:?}");
     };
-    assert!(matches!(source, ContentError::UnknownName { .. }), "{source:?}");
+    assert!(
+        matches!(source, ContentError::UnknownName { .. }),
+        "{source:?}"
+    );
 }
 
 #[test]
@@ -163,7 +166,10 @@ fn ranges_count() {
 #[test]
 fn an_alternation_of_sequences_compiles() {
     let schema = Schema::builder()
-        .node("doc", NodeSpec::new().content("(heading paragraph) | paragraph+"))
+        .node(
+            "doc",
+            NodeSpec::new().content("(heading paragraph) | paragraph+"),
+        )
         .node("heading", NodeSpec::new().content("inline*"))
         .node("paragraph", NodeSpec::new().content("inline*"))
         .node("text", NodeSpec::new().inline().group("inline"))
@@ -248,7 +254,11 @@ fn sizes_count_boundaries_and_bytes() {
     let b = b();
     let doc = b.doc(nodes![b.node(nodes::PARAGRAPH, nodes![b.text("hi")])]);
     let paragraph = doc.child(0).unwrap();
-    assert_eq!(paragraph.child(0).unwrap().node_size(), 2, "\"hi\" is 2 bytes");
+    assert_eq!(
+        paragraph.child(0).unwrap().node_size(),
+        2,
+        "\"hi\" is 2 bytes"
+    );
     assert_eq!(paragraph.content_size(), 2);
     assert_eq!(paragraph.node_size(), 4, "2 bytes plus 2 boundaries");
     assert_eq!(doc.content_size(), 4);
@@ -273,7 +283,10 @@ fn a_leaf_is_one_position_wide_and_an_empty_paragraph_is_not_a_leaf() {
     assert_eq!(rule.node_size(), 1);
 
     let empty = b.node(nodes::PARAGRAPH, nodes![]);
-    assert!(!empty.is_leaf(), "an empty paragraph still has a content expression");
+    assert!(
+        !empty.is_leaf(),
+        "an empty paragraph still has a content expression"
+    );
     assert_eq!(empty.node_size(), 2);
 }
 
@@ -297,7 +310,9 @@ fn node_at_descends_to_the_innermost_node() {
 #[test]
 fn cutting_a_fragment_slices_the_text_nodes_at_the_edges() {
     let b = b();
-    let doc = b.doc(nodes![b.node(nodes::PARAGRAPH, nodes![b.text("hello world")])]);
+    let doc = b.doc(nodes![
+        b.node(nodes::PARAGRAPH, nodes![b.text("hello world")])
+    ]);
     // Positions inside the paragraph's content: 0..11 over "hello world".
     let paragraph = doc.child(0).unwrap();
     assert_eq!(paragraph.cut(0, 5).text_content(), "hello");
@@ -424,7 +439,11 @@ fn a_code_block_admits_no_marks() {
 fn adjacent_text_with_the_same_markup_merges_on_append() {
     let b = b();
     let merged = Fragment::from(b.text("hello ")).append(&Fragment::from(b.text("world")));
-    assert_eq!(merged.child_count(), 1, "one run, written twice, is one run");
+    assert_eq!(
+        merged.child_count(),
+        1,
+        "one run, written twice, is one run"
+    );
     assert_eq!(merged.child(0).unwrap().text(), Some("hello world"));
 }
 

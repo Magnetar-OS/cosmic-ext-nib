@@ -106,6 +106,12 @@ pub struct Block {
     pub inline: Vec<Node>,
     /// The heading level, when this is one.
     pub level: Option<i64>,
+    /// How the author asked for this block to be aligned, when they said.
+    ///
+    /// `None` is "they did not say", which is not the same as "left": a reader
+    /// in a right-to-left locale wants its own default rather than a sender's
+    /// assumption about which side text starts on.
+    pub align: Option<nib_css::Align>,
     /// The code block's language, when this is one.
     pub language: Option<String>,
     /// Where this block sits in a table, when it is in one.
@@ -288,6 +294,10 @@ impl Walker {
             segments,
             inline,
             level: node.attrs().get_int("level"),
+            align: node
+                .attrs()
+                .get_str(nib_model::basic::attrs::ALIGN)
+                .and_then(nib_css::Align::parse),
             language: node
                 .attrs()
                 .get_str("language")
@@ -319,6 +329,7 @@ impl Walker {
             segments: Vec::new(),
             inline: Vec::new(),
             level: None,
+            align: None,
             language: None,
             cell: self.take_cell(),
         }
@@ -468,8 +479,7 @@ pub fn reusable(
     old_blocks: &[Block],
     new_blocks: &[Block],
 ) -> (usize, usize) {
-    let (before, after_new) =
-        unchanged_outside(old_doc, new_doc, old_decorations, new_decorations);
+    let (before, after_new) = unchanged_outside(old_doc, new_doc, old_decorations, new_decorations);
 
     let prefix = new_blocks
         .iter()
@@ -483,7 +493,10 @@ pub fn reusable(
         .take_while(|(block, _)| block.node_pos >= after_new)
         .count();
     // A block cannot be both, and neither list may run past its own end.
-    let room = new_blocks.len().min(old_blocks.len()).saturating_sub(prefix);
+    let room = new_blocks
+        .len()
+        .min(old_blocks.len())
+        .saturating_sub(prefix);
     (prefix, suffix.min(room))
 }
 

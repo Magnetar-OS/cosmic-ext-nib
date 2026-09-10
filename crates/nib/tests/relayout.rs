@@ -43,12 +43,15 @@ fn typed(doc: &Node, pos: usize, text: &str) -> Node {
 }
 
 /// The answer, and the blocks either side of it.
-fn survey(old: &Node, new: &Node, old_dec: &DecorationSet, new_dec: &DecorationSet)
--> (usize, usize, Vec<Block>, Vec<Block>) {
+fn survey(
+    old: &Node,
+    new: &Node,
+    old_dec: &DecorationSet,
+    new_dec: &DecorationSet,
+) -> (usize, usize, Vec<Block>, Vec<Block>) {
     let old_blocks = blocks::flatten(old);
     let new_blocks = blocks::flatten(new);
-    let (prefix, suffix) =
-        blocks::reusable(old, new, old_dec, new_dec, &old_blocks, &new_blocks);
+    let (prefix, suffix) = blocks::reusable(old, new, old_dec, new_dec, &old_blocks, &new_blocks);
     (prefix, suffix, old_blocks, new_blocks)
 }
 
@@ -64,12 +67,18 @@ fn assert_sound(prefix: usize, suffix: usize, old: &[Block], new: &[Block]) {
             && a.cell == b.cell
     };
     for i in 0..prefix {
-        assert!(same(&old[i], &new[i]), "block {i} was claimed unchanged but is not");
+        assert!(
+            same(&old[i], &new[i]),
+            "block {i} was claimed unchanged but is not"
+        );
         assert_eq!(old[i].from, new[i].from, "a prefix block also may not move");
     }
     for k in 1..=suffix {
         let (a, c) = (&old[old.len() - k], &new[new.len() - k]);
-        assert!(same(a, c), "block {k} from the end was claimed unchanged but is not");
+        assert!(
+            same(a, c),
+            "block {k} from the end was claimed unchanged but is not"
+        );
     }
     assert!(prefix + suffix <= new.len(), "the two halves overlap");
     assert!(prefix + suffix <= old.len(), "the two halves overlap");
@@ -165,7 +174,10 @@ fn a_change_of_markup_is_a_change() {
 
     let (prefix, suffix, a, c) = survey(&old, &new, &empty(), &empty());
     assert_sound(prefix, suffix, &a, &c);
-    assert!(prefix <= 4 && prefix + suffix < c.len(), "the bolded block is redone");
+    assert!(
+        prefix <= 4 && prefix + suffix < c.len(),
+        "the bolded block is redone"
+    );
 }
 
 #[test]
@@ -207,10 +219,7 @@ fn a_decoration_that_only_shifted_costs_nothing() {
     // A squiggle late in the document, and a keystroke early in it.
     let before = DecorationSet::new(vec![squiggle(flat[15].from, flat[15].from + 4)]);
     let new = typed(&old, flat[2].from, "xy");
-    let after = DecorationSet::new(vec![squiggle(
-        flat[15].from + 2,
-        flat[15].from + 6,
-    )]);
+    let after = DecorationSet::new(vec![squiggle(flat[15].from + 2, flat[15].from + 6)]);
 
     let (prefix, suffix, a, c) = survey(&old, &new, &before, &after);
     assert_sound(prefix, suffix, &a, &c);
@@ -234,7 +243,10 @@ fn a_decoration_that_changed_style_redoes_its_block() {
 
     let (prefix, suffix, a, c) = survey(&doc, &doc, &before, &after);
     assert_sound(prefix, suffix, &a, &c);
-    assert!(prefix <= 8, "the block whose colour changed is laid out again");
+    assert!(
+        prefix <= 8,
+        "the block whose colour changed is laid out again"
+    );
 }
 
 #[test]
@@ -269,10 +281,14 @@ fn typing_inside_a_list_leaves_the_rest_of_it_alone() {
             nodes![b.node(nodes::PARAGRAPH, nodes![b.text(text)])],
         )
     };
-    let old = b.doc(nodes![b.node(
-        nodes::BULLET_LIST,
-        (0..12).map(|i| item(&format!("item {i}"))).collect::<Vec<_>>()
-    )]);
+    let old = b.doc(nodes![
+        b.node(
+            nodes::BULLET_LIST,
+            (0..12)
+                .map(|i| item(&format!("item {i}")))
+                .collect::<Vec<_>>()
+        )
+    ]);
     let flat = blocks::flatten(&old);
     let new = typed(&old, flat[6].from + 2, "!");
 
@@ -291,12 +307,14 @@ fn typing_in_a_table_cell_leaves_the_other_cells_alone() {
         )
     };
     let row = |a: &str, c: &str| b.node(nodes::TABLE_ROW, nodes![cell(a), cell(c)]);
-    let old = b.doc(nodes![b.node(
-        nodes::TABLE,
-        (0..6)
-            .map(|i| row(&format!("left {i}"), &format!("right {i}")))
-            .collect::<Vec<_>>()
-    )]);
+    let old = b.doc(nodes![
+        b.node(
+            nodes::TABLE,
+            (0..6)
+                .map(|i| row(&format!("left {i}"), &format!("right {i}")))
+                .collect::<Vec<_>>()
+        )
+    ]);
     let flat = blocks::flatten(&old);
     let new = typed(&old, flat[5].from + 1, "z");
 

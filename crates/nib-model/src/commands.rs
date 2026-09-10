@@ -34,19 +34,17 @@ use crate::schema::{MarkTypeId, NodeTypeId};
 use crate::slice::Slice;
 use crate::state::selection::Kind;
 use crate::state::{EditorState, Selection, Transaction};
+use crate::transform::Step;
 use crate::transform::fit::replace_step;
 use crate::transform::structure::{
     MarkFilter, TypeAndAttrs, can_join, can_split, find_wrapping, lift_target,
 };
-use crate::transform::Step;
 
 /// An editing intent.
 pub type Command = Arc<dyn Fn(&EditorState) -> Option<Transaction> + Send + Sync>;
 
 /// Wraps a closure as a [`Command`].
-pub fn command(
-    f: impl Fn(&EditorState) -> Option<Transaction> + Send + Sync + 'static,
-) -> Command {
+pub fn command(f: impl Fn(&EditorState) -> Option<Transaction> + Send + Sync + 'static) -> Command {
     Arc::new(f)
 }
 
@@ -287,15 +285,15 @@ fn delete_barrier(state: &EditorState, cut: &ResolvedPos, dir: i32) -> Option<Tr
     let after = cut.node_after()?;
     let isolated = before.typ().spec().isolating || after.typ().spec().isolating;
 
-    if !isolated
-        && let Some(tr) = join_maybe_clear(state, cut)
-    {
+    if !isolated && let Some(tr) = join_maybe_clear(state, cut) {
         return Some(tr);
     }
 
     let index = cut.index(cut.depth());
-    let can_delete_after =
-        !isolated && cut.parent().can_replace(index, index + 1, &Fragment::empty());
+    let can_delete_after = !isolated
+        && cut
+            .parent()
+            .can_replace(index, index + 1, &Fragment::empty());
 
     if can_delete_after {
         let matched = before.content_match_at(before.child_count())?;
@@ -556,7 +554,9 @@ pub fn create_paragraph_near() -> Command {
         if from.parent().is_textblock() || selection.kind() == Kind::Text {
             return None;
         }
-        let matched = from.node(from.depth()).content_match_at(from.index(from.depth()))?;
+        let matched = from
+            .node(from.depth())
+            .content_match_at(from.index(from.depth()))?;
         let typ = default_block_at(state, &matched)?;
         let node = state
             .schema()
@@ -588,7 +588,8 @@ pub fn new_line_in_code() -> Command {
             return None;
         }
         let mut tr = state.tr();
-        tr.insert_text(&format!("\n{}", current_indent(state)?)).ok()?;
+        tr.insert_text(&format!("\n{}", current_indent(state)?))
+            .ok()?;
         Some(tr.clone().scroll_into_view())
     })
 }
@@ -667,7 +668,8 @@ pub fn indent_code(width: usize) -> Command {
         for (line_start, _) in lines.iter().rev() {
             let at = start + line_start;
             let node = state.schema().text(padding.as_str(), Marks::none());
-            tr.replace(at, at, Slice::new(Fragment::from(node), 0, 0)).ok()?;
+            tr.replace(at, at, Slice::new(Fragment::from(node), 0, 0))
+                .ok()?;
         }
         Some(tr.clone().scroll_into_view())
     })
@@ -810,8 +812,7 @@ pub fn toggle_mark(mark: MarkTypeId, attrs: Option<Attrs>) -> Command {
         // producing an empty transaction that looks like it worked.
         let mut applies = false;
         doc.nodes_between(from, to, &mut |node, _, parent, _| {
-            if node.is_inline()
-                && parent.is_some_and(|p| p.typ().allows_mark_type(mark_type.id()))
+            if node.is_inline() && parent.is_some_and(|p| p.typ().allows_mark_type(mark_type.id()))
             {
                 applies = true;
             }
@@ -840,14 +841,12 @@ pub fn set_block_type(typ: NodeTypeId, attrs: Option<Attrs>) -> Command {
         let (from, to) = (selection.from(), selection.to());
         // Nothing to do if every touched block is already this.
         let mut needed = false;
-        state
-            .doc()
-            .nodes_between(from, to, &mut |node, _, _, _| {
-                if node.is_textblock() && node.type_id() != typ {
-                    needed = true;
-                }
-                true
-            });
+        state.doc().nodes_between(from, to, &mut |node, _, _, _| {
+            if node.is_textblock() && node.type_id() != typ {
+                needed = true;
+            }
+            true
+        });
         if !needed {
             return None;
         }
@@ -918,7 +917,11 @@ pub fn split_list_item(item_type: NodeTypeId) -> Command {
         }
 
         let next_type = (to.pos() == from.end(from.depth()))
-            .then(|| grandparent.content_match_at(0).and_then(|m| m.default_type(state.schema())))
+            .then(|| {
+                grandparent
+                    .content_match_at(0)
+                    .and_then(|m| m.default_type(state.schema()))
+            })
             .flatten();
         let mut tr = state.tr();
         tr.delete(from.pos(), to.pos()).ok()?;
@@ -940,8 +943,7 @@ pub fn lift_list_item(item_type: NodeTypeId) -> Command {
         let from = doc.resolve(state.selection().from());
         let to = doc.resolve(state.selection().to());
         let is_item = |node: &Node| {
-            node.child_count() > 0
-                && node.first_child().is_some_and(|c| c.type_id() == item_type)
+            node.child_count() > 0 && node.first_child().is_some_and(|c| c.type_id() == item_type)
         };
         let range = from.block_range(&to, Some(&is_item))?;
         let target = lift_target(&range)?;
@@ -959,8 +961,7 @@ pub fn sink_list_item(item_type: NodeTypeId) -> Command {
         let from = doc.resolve(state.selection().from());
         let to = doc.resolve(state.selection().to());
         let is_item = |node: &Node| {
-            node.child_count() > 0
-                && node.first_child().is_some_and(|c| c.type_id() == item_type)
+            node.child_count() > 0 && node.first_child().is_some_and(|c| c.type_id() == item_type)
         };
         let range = from.block_range(&to, Some(&is_item))?;
         let start_index = range.start_index();
@@ -979,11 +980,12 @@ pub fn sink_list_item(item_type: NodeTypeId) -> Command {
             .last_child()
             .is_some_and(|c| c.type_id() == parent.type_id());
         let inner = if nested_before {
-            Fragment::from(
-                state
-                    .schema()
-                    .create_and_fill(item_type, None, Fragment::empty(), Marks::none())?,
-            )
+            Fragment::from(state.schema().create_and_fill(
+                item_type,
+                None,
+                Fragment::empty(),
+                Marks::none(),
+            )?)
         } else {
             Fragment::empty()
         };
@@ -995,11 +997,7 @@ pub fn sink_list_item(item_type: NodeTypeId) -> Command {
             .schema()
             .create(item_type, None, Fragment::from(list), Marks::none())
             .ok()?;
-        let slice = Slice::new(
-            Fragment::from(item),
-            if nested_before { 3 } else { 1 },
-            0,
-        );
+        let slice = Slice::new(Fragment::from(item), if nested_before { 3 } else { 1 }, 0);
         let (before, after) = (range.start(), range.end());
         let mut tr = state.tr();
         tr.step(Step::ReplaceAround {
@@ -1049,7 +1047,13 @@ pub fn wrap_in_list(list_type: NodeTypeId, attrs: Option<Attrs>) -> Command {
             }
         }
 
-        let wrapping = find_wrapping(state.schema(), &outer, list_type, attrs.clone(), Some(&range))?;
+        let wrapping = find_wrapping(
+            state.schema(),
+            &outer,
+            list_type,
+            attrs.clone(),
+            Some(&range),
+        )?;
         let mut tr = state.tr();
         tr.wrap(&range, &wrapping).ok()?;
         Some(tr.clone().scroll_into_view())

@@ -35,7 +35,9 @@ fn tr(doc: Node) -> Transform {
 #[test]
 fn a_paragraph_splits_in_two() {
     let b = b();
-    let doc = b.doc(nodes![b.node(nodes::PARAGRAPH, nodes![b.text("hello world")])]);
+    let doc = b.doc(nodes![
+        b.node(nodes::PARAGRAPH, nodes![b.text("hello world")])
+    ]);
     assert!(can_split(&schema(), &doc, 6, 1, None));
     let mut tr = tr(doc);
     tr.split(6, 1, None).unwrap();
@@ -117,10 +119,13 @@ fn a_paragraph_will_not_join_onto_a_code_block() {
     let b = b();
     let doc = b.doc(nodes![
         b.node(nodes::CODE_BLOCK, nodes![b.text("code")]),
-        b.node(nodes::BULLET_LIST, nodes![b.node(
-            nodes::LIST_ITEM,
-            nodes![b.node(nodes::PARAGRAPH, nodes![b.text("x")])]
-        )]),
+        b.node(
+            nodes::BULLET_LIST,
+            nodes![b.node(
+                nodes::LIST_ITEM,
+                nodes![b.node(nodes::PARAGRAPH, nodes![b.text("x")])]
+            )]
+        ),
     ]);
     assert!(!can_join(&doc, 6), "a list is not code-block content");
 }
@@ -204,10 +209,7 @@ fn wrapping_in_a_list_adds_the_item_the_schema_requires() {
     let wrapping =
         find_wrapping(&schema(), &range, id(nodes::BULLET_LIST), None, None).expect("wrappable");
     let s = schema();
-    let names: Vec<&str> = wrapping
-        .iter()
-        .map(|w| s.node_type(w.typ).name())
-        .collect();
+    let names: Vec<&str> = wrapping.iter().map(|w| s.node_type(w.typ).name()).collect();
     assert_eq!(
         names,
         [nodes::BULLET_LIST, nodes::LIST_ITEM],
@@ -246,10 +248,7 @@ fn a_paragraph_becomes_a_heading() {
     let mut tr = tr(doc);
     tr.set_block_type(1, 1, id(nodes::HEADING), Some(&attrs! { "level" => 2_i64 }))
         .unwrap();
-    assert_eq!(
-        tr.doc().to_string(),
-        r#"doc(heading[level=2]("Title"))"#
-    );
+    assert_eq!(tr.doc().to_string(), r#"doc(heading[level=2]("Title"))"#);
 }
 
 #[test]
@@ -263,7 +262,8 @@ fn retyping_to_a_code_block_drops_the_marks_it_cannot_carry() {
         ]
     )]);
     let mut tr = tr(doc);
-    tr.set_block_type(1, 1, id(nodes::CODE_BLOCK), None).unwrap();
+    tr.set_block_type(1, 1, id(nodes::CODE_BLOCK), None)
+        .unwrap();
     assert_eq!(tr.doc().to_string(), r#"doc(code_block("let x"))"#);
     assert_eq!(tr.doc().check(), Ok(()));
 }
@@ -344,8 +344,12 @@ fn removing_by_type_takes_the_link_off_without_knowing_its_target() {
         )]
     )]);
     let mut tr = tr(doc);
-    tr.remove_mark(1, 5, MarkFilter::OfType(schema().mark_id(marks::LINK).unwrap()))
-        .unwrap();
+    tr.remove_mark(
+        1,
+        5,
+        MarkFilter::OfType(schema().mark_id(marks::LINK).unwrap()),
+    )
+    .unwrap();
     assert_eq!(tr.doc().to_string(), r#"doc(paragraph("here"))"#);
 }
 
@@ -375,6 +379,10 @@ fn an_insertion_point_is_found_outside_a_block_that_will_not_take_the_node() {
     // A horizontal rule cannot go inside a paragraph, but can go beside it.
     let rule = id(nodes::HORIZONTAL_RULE);
     assert_eq!(insert_point(&doc, 3, rule), None, "mid-paragraph, nowhere");
-    assert_eq!(insert_point(&doc, 1, rule), Some(0), "at its start, before it");
+    assert_eq!(
+        insert_point(&doc, 1, rule),
+        Some(0),
+        "at its start, before it"
+    );
     assert_eq!(insert_point(&doc, 5, rule), Some(6), "at its end, after it");
 }

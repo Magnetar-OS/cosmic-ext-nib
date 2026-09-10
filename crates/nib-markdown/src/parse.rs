@@ -17,14 +17,12 @@
 //! the segments' contents go through it unchanged.
 
 use nib_model::attrs::{Attrs, Value};
+use nib_model::content::ContentMatch;
 use nib_model::fragment::Fragment;
 use nib_model::mark::{Mark, Marks};
 use nib_model::node::Node;
-use nib_model::content::ContentMatch;
 use nib_model::schema::{NodeTypeId, Schema};
-use pulldown_cmark::{
-    Alignment, CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd,
-};
+use pulldown_cmark::{Alignment, CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 
 use crate::Dialect;
 use crate::components::{COMPONENT_BLOCK, COMPONENT_INLINE, ESM, NAME, SOURCE};
@@ -43,13 +41,16 @@ pub fn parse(schema: &Schema, dialect: Dialect, text: &str) -> Node {
                 };
                 let inner = parse(schema, dialect, &body);
                 let attrs = props.set(NAME, name.as_str());
-                if let Ok(node) = schema.create(typ, Some(&attrs), inner.content().clone(), Marks::none())
+                if let Ok(node) =
+                    schema.create(typ, Some(&attrs), inner.content().clone(), Marks::none())
                 {
                     ctx.add(node);
                 }
             }
             Segment::Esm(source) => {
-                let Some(typ) = schema.node_id(ESM) else { continue };
+                let Some(typ) = schema.node_id(ESM) else {
+                    continue;
+                };
                 let attrs = Attrs::none().set(SOURCE, source.as_str());
                 if let Ok(node) = schema.create(typ, Some(&attrs), Fragment::empty(), Marks::none())
                 {
@@ -87,9 +88,7 @@ fn split(dialect: Dialect, text: &str) -> Vec<Segment> {
 
     while let Some(line) = lines.next() {
         // MDX keeps its module lines verbatim; they are not prose.
-        if dialect == Dialect::Mdx
-            && (line.starts_with("import ") || line.starts_with("export "))
-        {
+        if dialect == Dialect::Mdx && (line.starts_with("import ") || line.starts_with("export ")) {
             flush(&mut out, &mut plain);
             out.push(Segment::Esm(line.to_owned()));
             continue;
@@ -300,9 +299,9 @@ impl<'a> Ctx<'a> {
         }
         let open = self.stack.pop().expect("just checked the length");
         let content = Fragment::from_vec(open.content);
-        let Some(node) = self
-            .schema
-            .create_and_fill(open.typ, Some(&open.attrs), content, Marks::none())
+        let Some(node) =
+            self.schema
+                .create_and_fill(open.typ, Some(&open.attrs), content, Marks::none())
         else {
             return;
         };
@@ -366,11 +365,7 @@ impl<'a> Ctx<'a> {
             && node.is_text()
             && last.same_markup(&node)
         {
-            let joined = format!(
-                "{}{}",
-                last.text().unwrap_or(""),
-                node.text().unwrap_or("")
-            );
+            let joined = format!("{}{}", last.text().unwrap_or(""), node.text().unwrap_or(""));
             let index = open.content.len() - 1;
             open.content[index] = last.with_text(joined);
             return;
@@ -474,11 +469,7 @@ fn walk(ctx: &mut Ctx<'_>, dialect: Dialect, source: &str) {
                 Tag::Paragraph => open_named(ctx, nodes::PARAGRAPH, Attrs::none()),
                 Tag::Heading { level, .. } => {
                     let level = heading_level(level);
-                    open_named(
-                        ctx,
-                        nodes::HEADING,
-                        Attrs::none().set("level", level),
-                    );
+                    open_named(ctx, nodes::HEADING, Attrs::none().set("level", level));
                 }
                 Tag::BlockQuote(_) => open_named(ctx, nodes::BLOCKQUOTE, Attrs::none()),
                 Tag::CodeBlock(kind) => {
@@ -517,19 +508,20 @@ fn walk(ctx: &mut Ctx<'_>, dialect: Dialect, source: &str) {
                 Tag::Emphasis => ctx.add_mark(marks::EM, None),
                 Tag::Strong => ctx.add_mark(marks::STRONG, None),
                 Tag::Strikethrough => ctx.add_mark(marks::STRIKETHROUGH, None),
-                Tag::Link { dest_url, title, .. } => {
+                Tag::Link {
+                    dest_url, title, ..
+                } => {
                     let mut attrs = Attrs::none().set("href", dest_url.as_ref());
                     if !title.is_empty() {
                         attrs = attrs.set("title", title.as_ref());
                     }
                     ctx.add_mark(marks::LINK, Some(&attrs));
                 }
-                Tag::Image { dest_url, title, .. } => {
-                    ctx.pending_image = Some((
-                        dest_url.to_string(),
-                        title.to_string(),
-                        String::new(),
-                    ));
+                Tag::Image {
+                    dest_url, title, ..
+                } => {
+                    ctx.pending_image =
+                        Some((dest_url.to_string(), title.to_string(), String::new()));
                 }
                 _ => {}
             },
@@ -577,10 +569,9 @@ fn walk(ctx: &mut Ctx<'_>, dialect: Dialect, source: &str) {
             Event::TaskListMarker(checked) => {
                 ctx.set_open_attr(nodes::LIST_ITEM, "checked", Value::Bool(checked));
             }
-            Event::Html(html) | Event::InlineHtml(html)
-                if dialect == Dialect::Mdx => {
-                    mdx_tag(ctx, &html);
-                }
+            Event::Html(html) | Event::InlineHtml(html) if dialect == Dialect::Mdx => {
+                mdx_tag(ctx, &html);
+            }
             _ => {}
         }
     }

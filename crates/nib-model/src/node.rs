@@ -406,7 +406,9 @@ impl Node {
     /// True when `marks` may all be applied to a node of this type here.
     #[must_use]
     pub fn allows_marks(&self, marks: &Marks) -> bool {
-        marks.iter().all(|m| self.typ.allows_mark_type(m.typ().id()))
+        marks
+            .iter()
+            .all(|m| self.typ.allows_mark_type(m.typ().id()))
     }
 
     /// `marks` filtered down to those this node's type permits.
@@ -429,8 +431,7 @@ impl Node {
         let Some(two) = one.match_fragment(replacement) else {
             return false;
         };
-        let Some(three) =
-            two.match_fragment_range(&self.content, to, self.content.child_count())
+        let Some(three) = two.match_fragment_range(&self.content, to, self.content.child_count())
         else {
             return false;
         };
@@ -461,9 +462,7 @@ impl Node {
             .content_match()
             .match_fragment_range(&self.content, 0, from)
             .and_then(|m| m.match_type(typ))
-            .and_then(|m| {
-                m.match_fragment_range(&self.content, to, self.content.child_count())
-            })
+            .and_then(|m| m.match_fragment_range(&self.content, to, self.content.child_count()))
             .is_some_and(|m| m.valid_end())
     }
 

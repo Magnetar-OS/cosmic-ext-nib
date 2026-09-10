@@ -22,5 +22,11 @@ fmt:
     cargo +nightly fmt --all
 
 # What CI runs, in the order CI runs it.
+#
+# `+nightly` for the formatter, and it has to stay: `rustfmt.toml` sets
+# `imports_granularity`, which is unstable, so stable rustfmt ignores it — and
+# then disagrees with `just fmt` about how the imports it just ignored should
+# be laid out. A check that formats differently from the command that fixes it
+# is a check nobody can satisfy.
 ci: && check test
-    cargo fmt --all --check
+    cargo +nightly fmt --all --check

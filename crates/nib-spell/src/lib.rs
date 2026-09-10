@@ -144,11 +144,9 @@ impl Speller {
                 message: e.to_string(),
             })
         };
-        Self::from_strings(&read(aff)?, &read(dic)?, language).map_err(|message| {
-            Error::Malformed {
-                path: dic.display().to_string(),
-                message,
-            }
+        Self::from_strings(&read(aff)?, &read(dic)?, language).map_err(|message| Error::Malformed {
+            path: dic.display().to_string(),
+            message,
         })
     }
 
@@ -256,10 +254,7 @@ impl Speller {
                 continue;
             };
             // Inline code is code too.
-            let is_code = child
-                .marks()
-                .iter()
-                .any(|mark| mark.typ().spec().code);
+            let is_code = child.marks().iter().any(|mark| mark.typ().spec().code);
             if is_code {
                 offset += size;
                 continue;

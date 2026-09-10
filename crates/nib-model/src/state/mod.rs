@@ -229,9 +229,7 @@ impl EditorState {
             .iter()
             .zip(&self.fields)
             .map(|(plugin, value)| match (plugin.state_field(), value) {
-                (Some(field), Some(value)) => {
-                    Some(field.apply(tr, value, self, &doc, &selection))
-                }
+                (Some(field), Some(value)) => Some(field.apply(tr, value, self, &doc, &selection)),
                 (Some(field), None) => Some(field.init(&doc, &selection)),
                 (None, _) => None,
             })

@@ -56,6 +56,12 @@ impl Caret {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Colors {
     pub text: Color,
+    /// What the editor is drawn on.
+    ///
+    /// Not painted by the widget — it draws no ground of its own — but needed
+    /// all the same: an authored colour has to be checked against what it will
+    /// actually sit on before it can be allowed. See [`legible`].
+    pub background: Color,
     /// Markers, rules, and anything that is furniture rather than content.
     pub muted: Color,
     pub link: Color,
@@ -73,6 +79,7 @@ impl Colors {
     pub fn from_theme(theme: &cosmic::Theme) -> Self {
         let cosmic = theme.cosmic();
         let text = Color::from(cosmic.on_bg_color());
+        let background = Color::from(cosmic.bg_color());
         let accent = Color::from(cosmic.accent_color());
         let muted = Color {
             a: text.a * 0.55,
@@ -80,6 +87,7 @@ impl Colors {
         };
         Self {
             text,
+            background,
             muted,
             link: accent,
             selection: Color { a: 0.30, ..accent },
@@ -257,9 +265,12 @@ pub fn spans<'a>(
                 continue;
             }
             let mut span = Span::new(text)
-                .size(Pixels(size))
+                .size(Pixels(size * base.scale))
                 .font(base.font)
                 .color(base.color);
+            if let Some(background) = base.background {
+                span = span.background(background);
+            }
             if base.underline {
                 span = span.underline(true);
             }
@@ -278,8 +289,13 @@ pub fn spans<'a>(
 struct Inline {
     font: Font,
     color: Color,
+    /// An authored background, already composited and only where it was
+    /// legible enough to keep.
+    background: Option<Color>,
     underline: bool,
     strikethrough: bool,
+    /// The authored size as a multiple of the block's own.
+    scale: f32,
 }
 
 /// How a node's marks turn into font and colour.
@@ -294,6 +310,9 @@ fn span_style(node: &Node, style: &Style, code_block: bool) -> Inline {
     let mut color = style.colors.text;
     let mut underline = false;
     let mut strikethrough = false;
+    let mut authored_color = None;
+    let mut authored_background = None;
+    let mut scale = 1.0_f32;
 
     for mark in node.marks() {
         match mark.name() {
@@ -306,14 +325,51 @@ fn span_style(node: &Node, style: &Style, code_block: bool) -> Inline {
                 color = style.colors.link;
                 underline = true;
             }
+            marks::TEXT_COLOR => authored_color = mark_color(mark),
+            marks::BACKGROUND_COLOR => authored_background = mark_color(mark),
+            marks::FONT_SIZE => {
+                if let Some(value) = mark.attrs().get_float("scale") {
+                    #[allow(clippy::cast_possible_truncation, reason = "a ratio, already clamped")]
+                    {
+                        scale = value as f32;
+                    }
+                }
+            }
             _ => {}
         }
     }
+
+    // The ground this text will actually sit on: the author's background where
+    // they set one, the reader's otherwise. Both colours are judged against it
+    // rather than against each other, so a legible pair stays legible and an
+    // invisible one cannot be arranged out of two individually plausible
+    // values.
+    let ground = authored_background.map_or(style.colors.background, |background| {
+        composite(background, style.colors.background)
+    });
+
+    // A background is kept only when the text on it can be read. Dropping it
+    // rather than the text is the right way round: the words are the message
+    // and the paint is not.
+    let background = authored_background.filter(|_| {
+        let on = authored_color.map_or(color, |c| composite(c, ground));
+        contrast(on, ground) >= MIN_CONTRAST
+    });
+    let ground = background.map_or(style.colors.background, |b| {
+        composite(b, style.colors.background)
+    });
+
+    if let Some(authored) = authored_color {
+        color = legible(authored, ground, color);
+    }
+
     Inline {
         font,
         color,
+        background,
         underline,
         strikethrough,
+        scale,
     }
 }
 
@@ -468,4 +524,105 @@ pub fn marker_text(marker: &crate::blocks::Marker) -> String {
 #[must_use]
 pub fn has_background(block: &Block) -> bool {
     matches!(block.kind, Kind::Text) && block.type_name == "code_block"
+}
+
+// ---------------------------------------------------------------------------
+// Legibility
+// ---------------------------------------------------------------------------
+
+/// The contrast below which text stops being readable rather than merely
+/// low-contrast.
+///
+/// WCAG's bar for body text is 4.5, but that is a *design* target: plenty of
+/// deliberate, legitimate styling sits under it, and a reader that overrode all
+/// of it would be rewriting messages rather than showing them. 3.0 is the
+/// standard's own threshold for large text and interface components, and it is
+/// comfortably above the range the hiding tricks live in — white on white is
+/// 1.0, and "#fefefe on #ffffff" is 1.01.
+const MIN_CONTRAST: f32 = 3.0;
+
+/// An authored colour, or the reader's own where the authored one cannot be
+/// seen.
+///
+/// # Why this exists
+///
+/// Honouring a sender's colours reintroduces the oldest trick in hostile mail:
+/// text the recipient cannot see, sitting in a message that reads innocently,
+/// put there for whatever is scanning it rather than for them. The extractor
+/// counts white-on-white for exactly this reason.
+///
+/// Checking contrast at the point of drawing closes it by construction rather
+/// than by detection. There is no list of suspicious colours to keep up to
+/// date, and no way to phrase a colour that evades the check, because the check
+/// is not on the phrasing — it is on the result, against the pixels the text
+/// will actually land on.
+#[must_use]
+pub fn legible(authored: Color, background: Color, fallback: Color) -> Color {
+    let on = composite(authored, background);
+    if contrast(on, background) >= MIN_CONTRAST {
+        on
+    } else {
+        fallback
+    }
+}
+
+/// A colour with alpha, flattened onto what is behind it.
+///
+/// Transparency is a way of asking for low contrast without naming a low
+/// contrast colour, so it has to be resolved before the ratio is taken.
+#[must_use]
+pub fn composite(over: Color, under: Color) -> Color {
+    let a = over.a.clamp(0.0, 1.0);
+    Color {
+        r: over.r * a + under.r * (1.0 - a),
+        g: over.g * a + under.g * (1.0 - a),
+        b: over.b * a + under.b * (1.0 - a),
+        a: 1.0,
+    }
+}
+
+/// The WCAG 2 contrast ratio between two opaque colours, from 1.0 to 21.0.
+#[must_use]
+pub fn contrast(a: Color, b: Color) -> f32 {
+    let (l1, l2) = (luminance(a), luminance(b));
+    let (lighter, darker) = if l1 > l2 { (l1, l2) } else { (l2, l1) };
+    (lighter + 0.05) / (darker + 0.05)
+}
+
+/// WCAG relative luminance.
+fn luminance(c: Color) -> f32 {
+    fn channel(v: f32) -> f32 {
+        let v = v.clamp(0.0, 1.0);
+        if v <= 0.040_45 {
+            v / 12.92
+        } else {
+            ((v + 0.055) / 1.055).powf(2.4)
+        }
+    }
+    0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b)
+}
+
+/// A CSS colour from a mark's `value` attribute.
+fn mark_color(mark: &nib_model::mark::Mark) -> Option<Color> {
+    let value = mark.attrs().get_str("value")?;
+    nib_css::parse_color(value).map(to_color)
+}
+
+/// How a block's text is aligned.
+///
+/// `Default` where the author said nothing, which is what lets the reader's own
+/// direction decide instead of a sender's assumption about which side text
+/// starts on. `Justify` becomes `Default`: iced shapes one line at a time and
+/// has no justification pass, and faking it by padding spaces would break hit
+/// testing against the text that is actually there.
+#[must_use]
+pub fn alignment(block: &Block) -> cosmic::iced::advanced::text::Alignment {
+    use cosmic::iced::advanced::text::Alignment;
+
+    match block.align {
+        None | Some(nib_css::Align::Justify) => Alignment::Default,
+        Some(nib_css::Align::Left) => Alignment::Left,
+        Some(nib_css::Align::Center) => Alignment::Center,
+        Some(nib_css::Align::Right) => Alignment::Right,
+    }
 }

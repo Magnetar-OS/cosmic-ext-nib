@@ -7,10 +7,10 @@ use nib_model::build::Builder;
 use nib_model::decoration::{Decoration, DecorationSet, Style};
 use nib_model::input_rules::{self, InputRule};
 use nib_model::node::Node;
+use nib_model::nodes;
 use nib_model::schema::Schema;
 use nib_model::state::{EditorState, Selection};
 use nib_model::transform::{Mapping, StepMap};
-use nib_model::nodes;
 
 fn schema() -> Schema {
     basic::schema()
@@ -93,10 +93,7 @@ fn backticks_make_a_code_block_with_its_language() {
     let rules = input_rules::base(&schema());
     let state = state_at(one_paragraph("```rust"), 8);
     let state = type_text(&state, &rules, " ");
-    assert_eq!(
-        state.doc().to_string(),
-        r"doc(code_block[language=rust])"
-    );
+    assert_eq!(state.doc().to_string(), r"doc(code_block[language=rust])");
 }
 
 #[test]
@@ -235,7 +232,9 @@ fn a_decoration_moves_with_the_text_it_describes() {
     let decoration = Decoration::inline(5, 10, Style::class("keyword"));
     // Two characters inserted at the front.
     let mapping = Mapping::from_maps(vec![StepMap::single(0, 0, 2)]);
-    let moved = decoration.map(&mapping).expect("it still describes something");
+    let moved = decoration
+        .map(&mapping)
+        .expect("it still describes something");
     assert_eq!((moved.from(), moved.to()), (7, 12));
 }
 
