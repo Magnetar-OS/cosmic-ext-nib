@@ -123,6 +123,11 @@ fn syntax_palette(cosmic: &cosmic::cosmic_theme::Theme) -> BTreeMap<String, Colo
         ("constant".to_owned(), warn),
         ("attribute".to_owned(), accent),
         ("error".to_owned(), destructive),
+        // Not a syntax class, but it arrives the same way and wants the same
+        // treatment: a colour the theme owns rather than one a checker chose.
+        ("spelling-error".to_owned(), destructive),
+        ("search-hit".to_owned(), warn),
+        ("search-current".to_owned(), accent),
     ])
 }
 
