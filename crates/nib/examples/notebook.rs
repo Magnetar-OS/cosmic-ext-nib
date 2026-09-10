@@ -20,10 +20,10 @@ use cosmic::prelude::*;
 use cosmic::widget;
 
 use nib::{Action, Style, editor, toolbar_command};
+use nib_model::basic::nodes;
 use nib_model::input_rules::{self, InputRule};
 use nib_model::keymap::Keymap;
 use nib_model::state::EditorState;
-use nib_model::basic::nodes;
 use nib_model::{Transaction, basic, history};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -55,9 +55,7 @@ impl App {
     fn toolbar(&self) -> Element<'_, Message> {
         let button = |label: &'static str, name: &'static str| {
             widget::button::text(label)
-                .on_press_maybe(
-                    toolbar_command(&self.state, name).map(|_| Message::Toolbar(name)),
-                )
+                .on_press_maybe(toolbar_command(&self.state, name).map(|_| Message::Toolbar(name)))
                 .into()
         };
         widget::row::with_children(vec![
@@ -260,24 +258,25 @@ fn nib_markdown_parse(schema: &nib_model::Schema, source: &str) -> nib_model::No
                 if !item.starts_with("| ") {
                     break;
                 }
-                let cells: Vec<&str> = item
-                    .trim_matches('|')
-                    .split('|')
-                    .map(str::trim)
-                    .collect();
+                let cells: Vec<&str> = item.trim_matches('|').split('|').map(str::trim).collect();
                 if !cells.iter().all(|c| c.chars().all(|ch| ch == '-')) {
-                    rows.push(b.node(
-                        nodes::TABLE_ROW,
-                        cells
-                            .iter()
-                            .map(|cell| {
-                                b.node(
-                                    nodes::TABLE_CELL,
-                                    nib_model::nodes![b.node(nodes::PARAGRAPH, nib_model::nodes![b.text(cell)])],
-                                )
-                            })
-                            .collect::<Vec<_>>(),
-                    ));
+                    rows.push(
+                        b.node(
+                            nodes::TABLE_ROW,
+                            cells
+                                .iter()
+                                .map(|cell| {
+                                    b.node(
+                                        nodes::TABLE_CELL,
+                                        nib_model::nodes![b.node(
+                                            nodes::PARAGRAPH,
+                                            nib_model::nodes![b.text(cell)]
+                                        )],
+                                    )
+                                })
+                                .collect::<Vec<_>>(),
+                        ),
+                    );
                 }
                 current = lines.peek().copied().filter(|l| l.starts_with("| "));
                 if current.is_some() {

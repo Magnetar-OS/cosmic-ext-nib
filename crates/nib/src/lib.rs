@@ -45,17 +45,19 @@ pub use style::{Caret, Colors, Style};
 
 use std::time::Instant;
 
-use cosmic::iced::advanced::text::{Paragraph as _, Renderer as TextRenderer};
+use cosmic::iced::advanced::input_method::{self, InputMethod};
+use cosmic::iced::advanced::text::{
+    Affinity, LineHeight, Paragraph as _, Renderer as TextRenderer, Text, Wrapping,
+};
 use cosmic::iced::advanced::widget::{Id, Operation, Tree, operation, tree};
 use cosmic::iced::advanced::{Clipboard, Layout, Shell, Widget, layout, mouse, renderer};
 use cosmic::iced::{
     Background, Border, Color, Element, Event, Length, Point, Rectangle, Size, Vector, keyboard,
     window,
 };
-use cosmic::iced::advanced::text::{Affinity, LineHeight, Text, Wrapping};
-use cosmic::iced::advanced::input_method::{self, InputMethod};
 use nib_model::commands;
 use nib_model::decoration::DecorationSet;
+use nib_model::vim;
 use nib_model::input_rules::InputRule;
 use nib_model::keymap::{Binding, Key, Keymap, Mods};
 use nib_model::node::Node;
@@ -85,6 +87,11 @@ pub enum Action {
     /// the selection, so whatever menu the application shows acts on what the
     /// user pointed at rather than on what happened to be selected.
     Context { at: Point, position: usize },
+    /// Vim wants a prompt the widget does not draw: `/`, `?` or `:`, or `n`
+    /// and `N` to step through what that prompt last found.
+    Prompt(char),
+    /// The Vim mode changed, for a status bar to show.
+    Mode(vim::Mode),
 }
 
 /// Builds the editor widget.
@@ -93,9 +100,25 @@ pub fn editor(state: &EditorState) -> Editor<'_, ()> {
     Editor::new(state)
 }
 
+/// A task that gives keyboard focus to the editor with this [`Id`].
+///
+/// The counterpart to [`Editor::id`], and the reason that method exists: an
+/// application that opens a window onto a document wants the caret in it
+/// without the user clicking first. The widget implements iced's `Focusable`
+/// operation, so this is the same mechanism a text input uses — named here so
+/// that focusing an editor does not have to go through a text input's module
+/// to do it.
+pub fn focus<Message: Send + 'static>(id: Id) -> cosmic::iced::Task<Message> {
+    cosmic::iced::runtime::task::effect(cosmic::iced::runtime::Action::widget(
+        operation::focusable::focus(id),
+    ))
+}
+
 /// The editor widget.
 pub struct Editor<'a, Message> {
     state: &'a EditorState,
+    read_only: bool,
+    placeholder: Option<std::borrow::Cow<'a, str>>,
     decorations: Option<&'a DecorationSet>,
     keymap: Option<&'a Keymap>,
     input_rules: Option<&'a [InputRule]>,
@@ -103,6 +126,7 @@ pub struct Editor<'a, Message> {
     on_action: Option<Box<dyn Fn(Action) -> Message + 'a>>,
     id: Option<Id>,
     autofocus: bool,
+    vim: bool,
     width: Length,
     height: Length,
 }
@@ -113,6 +137,8 @@ impl<'a> Editor<'a, ()> {
     pub fn new(state: &'a EditorState) -> Self {
         Self {
             state,
+            read_only: false,
+            placeholder: None,
             decorations: None,
             keymap: None,
             input_rules: None,
@@ -120,6 +146,7 @@ impl<'a> Editor<'a, ()> {
             on_action: None,
             id: None,
             autofocus: false,
+            vim: false,
             width: Length::Fill,
             height: Length::Shrink,
         }
@@ -132,6 +159,8 @@ impl<'a, Message> Editor<'a, Message> {
     pub fn on_action<M>(self, f: impl Fn(Action) -> M + 'a) -> Editor<'a, M> {
         Editor {
             state: self.state,
+            read_only: self.read_only,
+            placeholder: self.placeholder,
             decorations: self.decorations,
             keymap: self.keymap,
             input_rules: self.input_rules,
@@ -139,9 +168,40 @@ impl<'a, Message> Editor<'a, Message> {
             on_action: Some(Box::new(f)),
             id: self.id,
             autofocus: self.autofocus,
+            vim: self.vim,
             width: self.width,
             height: self.height,
         }
+    }
+
+    /// Shows the document without letting it be changed.
+    ///
+    /// A reader, not a disabled editor: selection, motion, copy, link
+    /// activation and scrolling all still work, because a document you cannot
+    /// select from is a document you cannot quote. What stops is every
+    /// transaction that would change it — typing, deletion, paste, cut, and
+    /// any command a keymap binds — and the caret, which in a document nothing
+    /// can be inserted into is pointing at nothing.
+    ///
+    /// Enforced at the one place every change passes through rather than by
+    /// listing the events that make them, so a binding added later cannot
+    /// arrive already able to edit a read-only document.
+    #[must_use]
+    pub fn read_only(mut self) -> Self {
+        self.read_only = true;
+        self
+    }
+
+    /// What to show while the document is empty.
+    ///
+    /// Drawn rather than inserted: a placeholder that is a node in the document
+    /// is a placeholder that can be selected, serialised and sent. This one
+    /// occupies no position, so the caret sits at the only place there is and
+    /// the first keystroke replaces nothing.
+    #[must_use]
+    pub fn placeholder(mut self, text: impl Into<std::borrow::Cow<'a, str>>) -> Self {
+        self.placeholder = Some(text.into());
+        self
     }
 
     /// Styling that is not in the document: syntax colours, search hits, a
@@ -184,6 +244,20 @@ impl<'a, Message> Editor<'a, Message> {
     #[must_use]
     pub fn autofocus(mut self) -> Self {
         self.autofocus = true;
+        self
+    }
+
+    /// Modal editing.
+    ///
+    /// Every key press goes to [`vim::Vim`] before the keymap sees it, so
+    /// insert mode keeps every binding the editor already has and normal mode
+    /// keeps none of the typing. The mode lives in the widget because that is
+    /// where the key presses arrive and where the caret is drawn; the
+    /// application hears about it through [`Action::Mode`], and about the keys
+    /// Vim cannot answer on its own through [`Action::Prompt`].
+    #[must_use]
+    pub fn vim(mut self, on: bool) -> Self {
+        self.vim = on;
         self
     }
 
@@ -240,6 +314,12 @@ struct Internal<P> {
     /// Comparing two `Node`s is a handful of pointer comparisons.
     built_from: Option<Node>,
     built_width: f32,
+    /// The decorations and the style the paragraphs were built with. A
+    /// spelling squiggle appearing is as much a reason to shape a block again
+    /// as a letter arriving in it, and a theme change is a reason to shape all
+    /// of them.
+    built_decorations: DecorationSet,
+    built_style: Option<Style>,
     caret: caret::Animation,
     focused: bool,
     /// The document position a drag started at.
@@ -260,6 +340,9 @@ struct Internal<P> {
     working: Option<EditorState>,
     /// What `self.state` held when `working` was last reconciled.
     seen: Option<(Node, Selection)>,
+    /// The modal state, once modal editing has been asked for. Built from the
+    /// document's schema, so it knows what `>` can indent.
+    vim: Option<vim::Vim>,
     /// Text an input method is still composing.
     ///
     /// It is not in the document, and must not be: an edit that has not been
@@ -279,6 +362,9 @@ impl<P> Default for Internal<P> {
             side_scroll: Vec::new(),
             laid_out: false,
             built_from: None,
+            built_decorations: DecorationSet::empty(),
+            built_style: None,
+            vim: None,
             built_width: 0.0,
             caret: caret::Animation::new(Instant::now()),
             focused: false,
@@ -320,7 +406,7 @@ where
         limits: &layout::Limits,
     ) -> layout::Node {
         let internal = tree.state.downcast_mut::<Internal<Renderer::Paragraph>>();
-        let style = self.resolved_style_without_theme();
+        let style = self.style_in(internal);
         let width = limits.max().width;
 
         self.rebuild(internal, &style, width);
@@ -329,16 +415,11 @@ where
             internal.focused = true;
             internal.caret.touch(internal.now);
         }
-        let height = internal
-            .bounds
-            .last()
-            .map_or(style.padding * 2.0, |last| last.y + last.height + style.padding);
+        let height = internal.bounds.last().map_or(style.padding * 2.0, |last| {
+            last.y + last.height + style.padding
+        });
 
-        layout::Node::new(limits.resolve(
-            self.width,
-            self.height,
-            Size::new(width, height),
-        ))
+        layout::Node::new(limits.resolve(self.width, self.height, Size::new(width, height)))
     }
 
     #[allow(clippy::too_many_lines)]
@@ -353,7 +434,7 @@ where
         viewport: &Rectangle,
     ) {
         let internal = tree.state.downcast_ref::<Internal<Renderer::Paragraph>>();
-        let style = self.resolved_style_without_theme();
+        let style = self.style_in(internal);
         let origin = layout.bounds().position();
         let selection = self.state.selection();
         let (from, to) = (selection.from(), selection.to());
@@ -407,6 +488,35 @@ where
                     quiet,
                 );
             }
+        }
+
+        // The placeholder, while there is nothing to draw over it. One empty
+        // block is what an empty document is: a schema whose top node is
+        // `block+` cannot hold zero of them, so "empty" is one paragraph with
+        // no text rather than no paragraphs.
+        if let Some(text) = &self.placeholder
+            && internal.blocks.len() == 1
+            && internal.blocks[0].text.is_empty()
+            && let Some(bounds) = internal.bounds.first()
+        {
+            let bounds = *bounds + Vector::new(origin.x, origin.y);
+            renderer.fill_text(
+                Text {
+                    content: text.to_string(),
+                    bounds: bounds.size(),
+                    size: style.text_size.into(),
+                    line_height: LineHeight::Absolute(style.line_height.into()),
+                    font: style.body_font,
+                    align_x: cosmic::iced::advanced::text::Alignment::Left,
+                    align_y: cosmic::iced::alignment::Vertical::Top,
+                    shaping: cosmic::iced::advanced::text::Shaping::Advanced,
+                    wrapping: Wrapping::Word,
+                    ellipsize: cosmic::iced::advanced::text::Ellipsize::None,
+                },
+                bounds.position(),
+                style.colors.muted,
+                *viewport,
+            );
         }
 
         for (index, block) in internal.blocks.iter().enumerate() {
@@ -482,8 +592,7 @@ where
                 let gutter = style::gutter_width(block, &style);
                 if let Some(paragraph) = internal.paragraphs.get(index) {
                     for line in 0..block.line_count() {
-                        let Some(point) =
-                            paragraph.cursor_position(line, 0, Affinity::After)
+                        let Some(point) = paragraph.cursor_position(line, 0, Affinity::After)
                         else {
                             break;
                         };
@@ -540,7 +649,8 @@ where
             // The selection goes behind the text, never over it.
             if to > from && block.from < to && block.to > from {
                 let offset = internal.side_scroll.get(index).map_or(0.0, |(at, _)| *at);
-                for rect in selection_rects(block, paragraph, from.max(block.from), to.min(block.to))
+                for rect in
+                    selection_rects(block, paragraph, from.max(block.from), to.min(block.to))
                 {
                     renderer.fill_quad(
                         renderer::Quad {
@@ -567,7 +677,9 @@ where
         // so it is drawn rather than inserted.
         if internal.focused
             && let Some((content, selection)) = &internal.preedit
-            && let Some(at) = internal.caret.visible(internal.now, std::time::Duration::ZERO)
+            && let Some(at) = internal
+                .caret
+                .visible(internal.now, std::time::Duration::ZERO)
         {
             let at = at + Vector::new(origin.x, origin.y);
             // A rough advance: composing text is a few characters and the
@@ -624,8 +736,11 @@ where
             );
         }
 
-        // The caret last, over everything.
+        // The caret last, over everything — and never in a document that
+        // cannot be typed into, where it would be promising an insertion point
+        // that does not exist.
         if internal.focused
+            && !self.read_only
             && let Some(rect) = internal.caret.visible(internal.now, style.blink_period)
         {
             let color = if style.caret == Caret::Block {
@@ -690,7 +805,7 @@ where
     ) {
         let internal = tree.state.downcast_mut::<Internal<Renderer::Paragraph>>();
         self.reconcile(internal);
-        let style = self.resolved_style_without_theme();
+        let style = self.style_in(internal);
         let bounds = layout.bounds();
         match event {
             Event::Window(window::Event::RedrawRequested(now)) => {
@@ -756,11 +871,7 @@ where
                     return;
                 };
                 let local = Point::new(point.x - bounds.x, point.y - bounds.y);
-                let Some(index) = internal
-                    .bounds
-                    .iter()
-                    .position(|b| b.contains(local))
-                else {
+                let Some(index) = internal.bounds.iter().position(|b| b.contains(local)) else {
                     return;
                 };
                 let (dx, dy) = match delta {
@@ -786,8 +897,7 @@ where
                     return;
                 };
                 let local = point - Vector::new(bounds.x, bounds.y);
-                let Some(pos) = Self::position_at(internal, Point::new(local.x, local.y))
-                else {
+                let Some(pos) = Self::position_at(internal, Point::new(local.x, local.y)) else {
                     return;
                 };
                 if !internal.focused {
@@ -904,6 +1014,22 @@ impl<Message> Editor<'_, Message> {
     /// `layout` and `update` do not receive one — only `draw` does — so the
     /// geometry has to be computable without it. That is why colours are the
     /// last thing [`Style`] resolves and the only thing that needs a theme.
+    /// The style, with the caret shape the current mode calls for.
+    ///
+    /// In Vim the caret is *on* a character rather than between two, and the
+    /// block is what says so — everywhere but insert mode.
+    fn style_in<P>(&self, internal: &Internal<P>) -> Style {
+        let mut style = self.resolved_style_without_theme();
+        if internal
+            .vim
+            .as_ref()
+            .is_some_and(|vim| vim.mode().block_caret())
+        {
+            style.caret = style::Caret::Block;
+        }
+        style
+    }
+
     fn resolved_style_without_theme(&self) -> Style {
         self.style
             .clone()
@@ -937,6 +1063,13 @@ impl<Message> Editor<'_, Message> {
         shell: &mut Shell<'_, Message>,
         tr: Transaction,
     ) {
+        // Every change to the document arrives here, which is why this is
+        // where read-only is decided. A transaction that only moves the
+        // selection still goes through: that is what keeps a reader
+        // selectable.
+        if self.read_only && tr.doc_changed() {
+            return;
+        }
         internal.working = Some(self.live(internal).applied(tr.clone()));
         self.emit(shell, Action::Edit(Box::new(tr)));
     }
@@ -959,24 +1092,53 @@ impl<Message> Editor<'_, Message> {
         P: cosmic::iced::advanced::text::Paragraph<Font = cosmic::iced::Font> + 'static,
     {
         let doc = self.state.doc();
+        let empty = DecorationSet::empty();
+        let decorations = self.decorations.unwrap_or(&empty);
+
+        let same_width = (internal.built_width - width).abs() < f32::EPSILON;
+        let same_style = internal.built_style.as_ref() == Some(style);
         let unchanged = internal.built_from.as_ref() == Some(doc)
-            && (internal.built_width - width).abs() < f32::EPSILON;
+            && same_width
+            && same_style
+            && internal.built_decorations == *decorations;
         if unchanged {
             return;
         }
+
+        let blocks = blocks::flatten(doc);
+        // What the last layout left, and how much of it this one can keep.
+        // Shaping is the expensive part — tens of milliseconds for a document
+        // of a few hundred blocks — and a keystroke changes one block.
+        let mut recycled = match (&internal.built_from, &internal.built_style) {
+            (Some(before), Some(built)) if same_width && built == style => Recycled::between(
+                before,
+                doc,
+                &internal.built_decorations,
+                decorations,
+                &internal.blocks,
+                &blocks,
+                std::mem::take(&mut internal.paragraphs),
+                &internal.bounds,
+                &internal.side_scroll,
+            ),
+            _ => Recycled::nothing(),
+        };
+
         internal.built_from = Some(doc.clone());
         internal.built_width = width;
-        internal.blocks = blocks::flatten(doc);
+        internal.built_style = Some(style.clone());
+        internal.built_decorations = decorations.clone();
+        internal.blocks = blocks;
         internal.paragraphs.clear();
         internal.bounds.clear();
         internal.tables.clear();
         // Offsets are kept across a rebuild where the block count has not
         // changed, so typing in a scrolled code block does not jump it back.
-        internal.side_scroll.resize(internal.blocks.len(), (0.0, 0.0));
+        internal
+            .side_scroll
+            .resize(internal.blocks.len(), (0.0, 0.0));
         internal.side_scroll.truncate(internal.blocks.len());
 
-        let empty = DecorationSet::empty();
-        let decorations = self.decorations.unwrap_or(&empty);
         let mut y = style.padding;
         let mut index = 0;
 
@@ -986,8 +1148,11 @@ impl<Message> Editor<'_, Message> {
                 let gutter = style::gutter_width(block, style);
                 let x = style.padding + style.indent_of(block) + gutter;
                 let available = (width - x - style.padding).max(style.text_size);
-                let (paragraph, height) = build::<P>(block, style, decorations, available);
-                let overflow = (paragraph.min_width() - available).max(0.0);
+                let (paragraph, height, overflow) = recycled.take(index).unwrap_or_else(|| {
+                    let (paragraph, height) = build::<P>(block, style, decorations, available);
+                    let overflow = (paragraph.min_width() - available).max(0.0);
+                    (paragraph, height, overflow)
+                });
                 internal.bounds.push(Rectangle {
                     x,
                     y,
@@ -1013,7 +1178,15 @@ impl<Message> Editor<'_, Message> {
                     .iter()
                     .take_while(|b| b.cell.is_some_and(|c| c.table == table))
                     .count();
-            y = Self::lay_out_table(internal, index..end, style, decorations, width, y);
+            y = Self::lay_out_table(
+                internal,
+                index..end,
+                style,
+                decorations,
+                width,
+                y,
+                &mut recycled,
+            );
             index = end;
         }
     }
@@ -1026,10 +1199,17 @@ impl<Message> Editor<'_, Message> {
         decorations: &DecorationSet,
         width: f32,
         top: f32,
+        recycled: &mut Recycled<P>,
     ) -> f32
     where
         P: cosmic::iced::advanced::text::Paragraph<Font = cosmic::iced::Font> + 'static,
     {
+        let start = range.start;
+        // A table keeps its old paragraphs only if it keeps all of them: the
+        // column widths come from every cell, so one changed cell can move the
+        // rest, and a grid laid out from two different sets of widths is not a
+        // grid.
+        let keep = recycled.covers(range.clone());
         let blocks: Vec<Block> = internal.blocks[range].to_vec();
         let columns = blocks
             .iter()
@@ -1071,7 +1251,7 @@ impl<Message> Editor<'_, Message> {
             // Each cell stacks its own blocks; the row is as tall as the
             // tallest of them.
             let mut column_heights: Vec<(usize, f32)> = Vec::new();
-            for block in &blocks[cursor..row_end] {
+            for (offset, block) in blocks[cursor..row_end].iter().enumerate() {
                 let cell = block.cell.unwrap_or(blocks::Cell {
                     table: 0,
                     row,
@@ -1084,7 +1264,13 @@ impl<Message> Editor<'_, Message> {
                 let span = cell.span as f32;
                 let available =
                     (column_width * span + gap * (span - 1.0) - inset * 2.0).max(style.text_size);
-                let (paragraph, height) = build::<P>(block, style, decorations, available);
+                let (paragraph, height) = match keep
+                    .then(|| recycled.take(start + cursor + offset))
+                    .flatten()
+                {
+                    Some((paragraph, height, _)) => (paragraph, height),
+                    None => build::<P>(block, style, decorations, available),
+                };
 
                 let used = column_heights
                     .iter()
@@ -1160,10 +1346,7 @@ impl<Message> Editor<'_, Message> {
             return Some(block.node_pos);
         }
         let offset = internal.side_scroll.get(index).map_or(0.0, |(at, _)| *at);
-        let local = Point::new(
-            point.x - bounds.x + offset,
-            (point.y - bounds.y).max(0.0),
-        );
+        let local = Point::new(point.x - bounds.x + offset, (point.y - bounds.y).max(0.0));
         let line = line_at(paragraph, block, local.y);
         let offset = match paragraph.hit_test(local) {
             Some(hit) => block.line_start(line) + hit.cursor(),
@@ -1186,11 +1369,7 @@ impl<Message> Editor<'_, Message> {
         internal.caret.aim(target, internal.now, style.caret_glide);
     }
 
-    fn caret_rect<P>(
-        internal: &Internal<P>,
-        style: &Style,
-        pos: usize,
-    ) -> Option<Rectangle>
+    fn caret_rect<P>(internal: &Internal<P>, style: &Style, pos: usize) -> Option<Rectangle>
     where
         P: cosmic::iced::advanced::text::Paragraph<Font = cosmic::iced::Font> + 'static,
     {
@@ -1259,6 +1438,43 @@ impl<Message> Editor<'_, Message> {
             }
         }
         let state = self.live(internal).clone();
+
+        // Modal editing, before anything else looks at the key: in normal mode
+        // `d` is not a letter to type and `j` is not a letter either, and only
+        // the mode knows which.
+        if self.vim {
+            if internal.vim.is_none() {
+                internal.vim = Some(vim::Vim::new(state.schema()));
+            }
+            let answer = to_vim_binding(key, modifiers).map(|binding| {
+                let vim = internal.vim.as_mut().expect("just built one");
+                let before = vim.mode();
+                let response = vim.key(&state, &binding);
+                (response, before, vim.mode())
+            });
+            if let Some((response, before, after)) = answer {
+                if before != after {
+                    let now = internal.now;
+                    internal.caret.touch(now);
+                    self.emit(shell, Action::Mode(after));
+                    shell.request_redraw();
+                }
+                match response {
+                    // Insert mode wants the ordinary editor underneath it.
+                    vim::Response::Pass => {}
+                    vim::Response::Consumed => return true,
+                    vim::Response::Apply(tr) => {
+                        internal.goal_x = None;
+                        self.apply(internal, shell, *tr);
+                        return true;
+                    }
+                    vim::Response::Prompt(c) => {
+                        self.emit(shell, Action::Prompt(c));
+                        return true;
+                    }
+                }
+            }
+        }
 
         // Motion is the widget's, because only the widget knows where the
         // lines are.
@@ -1418,12 +1634,7 @@ impl<Message> Editor<'_, Message> {
     }
 
     /// One visual line up or down, keeping the column.
-    fn by_line<P>(
-        &self,
-        internal: &mut Internal<P>,
-        from: usize,
-        down: bool,
-    ) -> Option<usize>
+    fn by_line<P>(&self, internal: &mut Internal<P>, from: usize, down: bool) -> Option<usize>
     where
         P: cosmic::iced::advanced::text::Paragraph<Font = cosmic::iced::Font> + 'static,
     {
@@ -1446,12 +1657,7 @@ impl<Message> Editor<'_, Message> {
     }
 
     /// To the start or end of the visual line.
-    fn line_edge<P>(
-        &self,
-        internal: &Internal<P>,
-        from: usize,
-        end: bool,
-    ) -> Option<usize>
+    fn line_edge<P>(&self, internal: &Internal<P>, from: usize, end: bool) -> Option<usize>
     where
         P: cosmic::iced::advanced::text::Paragraph<Font = cosmic::iced::Font> + 'static,
     {
@@ -1524,6 +1730,123 @@ impl<Message> Editor<'_, Message> {
 }
 
 /// Lays out one block at a given width, giving its paragraph and its height.
+/// What the last layout left behind, and how much of it the next one may keep.
+///
+/// # Why this exists
+///
+/// Shaping a block into a paragraph is the expensive part of laying a document
+/// out: a few hundred blocks cost tens of milliseconds, which is several
+/// frames. A keystroke changes one block. Everything before it is untouched,
+/// and everything after it is the same paragraph at a different height — so
+/// the only work a keystroke genuinely needs is one block's worth of shaping
+/// and a column of arithmetic.
+///
+/// # How much survives
+///
+/// Two questions, and a block has to pass both. The document's own diff says
+/// which positions changed, and it is cheap to ask because two fragments that
+/// were never edited apart share a pointer. The decorations have to agree as
+/// well, relative to the block: a spelling squiggle appearing under a word is
+/// as much a reason to shape its block again as a letter arriving in it, and a
+/// squiggle that only moved because text was inserted above it has not
+/// changed at all.
+struct Recycled<P> {
+    /// The old paragraphs, taken out as they are claimed.
+    paragraphs: Vec<Option<P>>,
+    /// What each was measured at: its height, and how far it overflows.
+    measured: Vec<(f32, f32)>,
+    /// How many blocks at the start of the document may be kept.
+    prefix: usize,
+    /// How many at the end.
+    suffix: usize,
+    old_len: usize,
+    new_len: usize,
+}
+
+impl<P> Recycled<P> {
+    /// Nothing to keep: the first layout, a resize, or a change of theme.
+    fn nothing() -> Self {
+        Self {
+            paragraphs: Vec::new(),
+            measured: Vec::new(),
+            prefix: 0,
+            suffix: 0,
+            old_len: 0,
+            new_len: 0,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn between(
+        old_doc: &Node,
+        new_doc: &Node,
+        old_decorations: &DecorationSet,
+        new_decorations: &DecorationSet,
+        old_blocks: &[Block],
+        new_blocks: &[Block],
+        paragraphs: Vec<P>,
+        bounds: &[Rectangle],
+        side_scroll: &[(f32, f32)],
+    ) -> Self {
+        if paragraphs.len() != old_blocks.len() || bounds.len() != old_blocks.len() {
+            return Self::nothing();
+        }
+        let (prefix, suffix) = blocks::reusable(
+            old_doc,
+            new_doc,
+            old_decorations,
+            new_decorations,
+            old_blocks,
+            new_blocks,
+        );
+
+        let measured = bounds
+            .iter()
+            .zip(side_scroll)
+            .map(|(bounds, scroll)| (bounds.height, scroll.1))
+            .collect();
+
+        Self {
+            paragraphs: paragraphs.into_iter().map(Some).collect(),
+            measured,
+            prefix,
+            suffix,
+            old_len: old_blocks.len(),
+            new_len: new_blocks.len(),
+        }
+    }
+
+    /// Which old block a new one may take its paragraph from.
+    fn source(&self, index: usize) -> Option<usize> {
+        if index < self.prefix {
+            return Some(index);
+        }
+        // Counted from the end, because that is the end a suffix shares.
+        let from_end = self.new_len.checked_sub(index)?;
+        (from_end <= self.suffix)
+            .then(|| self.old_len.checked_sub(from_end))
+            .flatten()
+    }
+
+    /// Whether every block in a range can be kept.
+    fn covers(&self, range: std::ops::Range<usize>) -> bool {
+        range.into_iter().all(|index| {
+            self.source(index)
+                .and_then(|source| self.paragraphs.get(source))
+                .is_some_and(Option::is_some)
+        })
+    }
+
+    /// Claims one, leaving nothing behind: a paragraph, its height, and its
+    /// sideways overflow.
+    fn take(&mut self, index: usize) -> Option<(P, f32, f32)> {
+        let source = self.source(index)?;
+        let (height, overflow) = *self.measured.get(source)?;
+        let paragraph = self.paragraphs.get_mut(source)?.take()?;
+        Some((paragraph, height, overflow))
+    }
+}
+
 fn build<P>(block: &Block, style: &Style, decorations: &DecorationSet, available: f32) -> (P, f32)
 where
     P: cosmic::iced::advanced::text::Paragraph<Font = cosmic::iced::Font> + 'static,
@@ -1561,7 +1884,12 @@ where
 }
 
 /// The plain text of a slice.
-fn plain_text(state: &EditorState, slice: &Slice) -> String {
+///
+/// Public because an application's own menus and shortcuts need to put the
+/// same thing on the clipboard the widget does, and two implementations of
+/// "what does this selection look like as text" would drift.
+#[must_use]
+pub fn plain_text(state: &EditorState, slice: &Slice) -> String {
     let doc = state
         .schema()
         .create_and_fill(
@@ -1575,7 +1903,10 @@ fn plain_text(state: &EditorState, slice: &Slice) -> String {
 }
 
 /// Plain text as a slice: one paragraph per blank-line-separated run.
-fn parse_plain(state: &EditorState, text: &str) -> Slice {
+///
+/// Public for the same reason as [`plain_text`].
+#[must_use]
+pub fn parse_plain(state: &EditorState, text: &str) -> Slice {
     let schema = state.schema();
     let Some(paragraph) = schema.node_id(nib_model::basic::nodes::PARAGRAPH) else {
         return Slice::empty();
@@ -1600,11 +1931,7 @@ fn parse_plain(state: &EditorState, text: &str) -> Slice {
         0 => Slice::empty(),
         // A single run pastes as inline content, so it continues the paragraph
         // it lands in rather than starting one.
-        1 => Slice::new(
-            blocks[0].content().clone(),
-            0,
-            0,
-        ),
+        1 => Slice::new(blocks[0].content().clone(), 0, 0),
         _ => Slice::new(nib_model::fragment::Fragment::from_vec(blocks), 1, 1),
     }
 }
@@ -1655,6 +1982,19 @@ where
 }
 
 /// An iced key press as a binding the keymap understands.
+/// The same, but keeping the case the keyboard produced.
+///
+/// A keymap spells Shift in its modifiers, so `to_binding` folds `G` down to
+/// `g` and there is only one binding to write. Vim is the other way round: `g`
+/// and `G` are two different commands, and the character is which one.
+fn to_vim_binding(key: &keyboard::Key, modifiers: keyboard::Modifiers) -> Option<Binding> {
+    let mut binding = to_binding(key, modifiers)?;
+    if let keyboard::Key::Character(c) = key {
+        binding.key = Key::Char(c.chars().next()?);
+    }
+    Some(binding)
+}
+
 fn to_binding(key: &keyboard::Key, modifiers: keyboard::Modifiers) -> Option<Binding> {
     use keyboard::key::Named;
 

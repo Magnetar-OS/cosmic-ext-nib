@@ -27,7 +27,11 @@ fn flatten(doc: &Node) -> Vec<blocks::Block> {
 fn a_document_becomes_one_box_per_block_in_order() {
     let b = b();
     let doc = b.doc(nodes![
-        b.attr_node(nodes::HEADING, &attrs! { "level" => 1_i64 }, nodes![b.text("Title")]),
+        b.attr_node(
+            nodes::HEADING,
+            &attrs! { "level" => 1_i64 },
+            nodes![b.text("Title")]
+        ),
         b.node(nodes::PARAGRAPH, nodes![b.text("body")]),
     ]);
     let found = flatten(&doc);
@@ -263,7 +267,10 @@ fn an_inline_atom_is_one_position_however_it_is_drawn() {
     // The image draws as a placeholder character but occupies one position.
     assert_eq!(block.text.chars().count(), 3);
     assert_eq!(block.to - block.from, 3);
-    assert_eq!(block.doc_position(block.text_offset(block.from + 2)), block.from + 2);
+    assert_eq!(
+        block.doc_position(block.text_offset(block.from + 2)),
+        block.from + 2
+    );
 }
 
 #[test]
@@ -327,7 +334,10 @@ fn a_caret_glides_to_a_nearby_position() {
 
     let after = start + Duration::from_millis(150);
     assert!(!caret.tick(after, glide), "arrived");
-    assert_eq!(caret.visible(after, Duration::ZERO).map(|r| r.x), Some(20.0));
+    assert_eq!(
+        caret.visible(after, Duration::ZERO).map(|r| r.x),
+        Some(20.0)
+    );
 }
 
 #[test]
@@ -370,9 +380,21 @@ fn a_caret_blinks_once_it_has_settled() {
 
     // The first half-period coincides with the grace after a move, so the
     // caret is lit from 0 to 500ms, dark from 500 to 1000, and lit again after.
-    assert!(caret.visible(start + Duration::from_millis(200), period).is_some());
-    assert!(caret.visible(start + Duration::from_millis(600), period).is_none());
-    assert!(caret.visible(start + Duration::from_millis(1100), period).is_some());
+    assert!(
+        caret
+            .visible(start + Duration::from_millis(200), period)
+            .is_some()
+    );
+    assert!(
+        caret
+            .visible(start + Duration::from_millis(600), period)
+            .is_none()
+    );
+    assert!(
+        caret
+            .visible(start + Duration::from_millis(1100), period)
+            .is_some()
+    );
 }
 
 #[test]
@@ -416,10 +438,45 @@ fn each_caret_shape_occupies_what_it_should() {
     assert!((thin.height - line.height).abs() < f32::EPSILON);
 
     let block = nib::caret::rectangle(Caret::Block, line, 14.0, Some(9.0));
-    assert!((block.width - 9.0).abs() < f32::EPSILON, "a block covers the next character");
+    assert!(
+        (block.width - 9.0).abs() < f32::EPSILON,
+        "a block covers the next character"
+    );
     assert!((block.height - line.height).abs() < f32::EPSILON);
 
     let under = nib::caret::rectangle(Caret::Underline, line, 14.0, Some(9.0));
-    assert!(under.height < line.height, "an underline is a rule, not a bar");
+    assert!(
+        under.height < line.height,
+        "an underline is a rule, not a bar"
+    );
     assert!(under.y > line.y);
+}
+
+// ---------------------------------------------------------------------------
+// The placeholder
+// ---------------------------------------------------------------------------
+
+/// What [`nib::Editor::placeholder`] tests before it draws.
+///
+/// The placeholder shows while the document is empty, and "empty" cannot mean
+/// "no blocks": the top node's content expression is `block+`, so a document
+/// holds at least one. Empty is *one* block with no text in it, and this is the
+/// property the draw depends on — a change to the empty document's shape would
+/// otherwise silently stop the placeholder appearing.
+#[test]
+fn an_empty_document_is_one_block_with_no_text() {
+    let found = flatten(&basic::schema().empty_doc());
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(found[0].text.is_empty());
+}
+
+/// And a document with anything in it is not that, so the placeholder goes
+/// away as soon as the first character arrives.
+#[test]
+fn a_document_with_one_character_no_longer_looks_empty() {
+    let b = b();
+    let doc = b.doc(nodes![b.node(nodes::PARAGRAPH, nodes![b.text("x")])]);
+    let found = flatten(&doc);
+    assert_eq!(found.len(), 1);
+    assert!(!found[0].text.is_empty());
 }
