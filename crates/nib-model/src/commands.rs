@@ -607,9 +607,16 @@ fn current_indent(state: &EditorState) -> Option<String> {
     )
 }
 
-/// The lines of a code block that the selection touches, as byte ranges into
-/// the block's text, with the block's content start.
-fn code_lines(state: &EditorState) -> Option<(usize, String, Vec<(usize, usize)>)> {
+/// A code block the selection is in: where its content starts, its text, and
+/// the byte ranges of the lines the selection touches.
+struct CodeLines {
+    start: usize,
+    text: String,
+    lines: Vec<(usize, usize)>,
+}
+
+/// The lines of a code block that the selection touches.
+fn code_lines(state: &EditorState) -> Option<CodeLines> {
     let selection = state.selection();
     let doc = state.doc();
     let from = doc.resolve(selection.from());
@@ -636,7 +643,7 @@ fn code_lines(state: &EditorState) -> Option<(usize, String, Vec<(usize, usize)>
     if line_start <= b {
         lines.push((line_start, text.len()));
     }
-    (!lines.is_empty()).then_some((start, text, lines))
+    (!lines.is_empty()).then_some(CodeLines { start, text, lines })
 }
 
 /// Indents the code the selection touches by `width` spaces.
@@ -647,7 +654,7 @@ fn code_lines(state: &EditorState) -> Option<(usize, String, Vec<(usize, usize)>
 #[must_use]
 pub fn indent_code(width: usize) -> Command {
     command(move |state| {
-        let (start, _, lines) = code_lines(state)?;
+        let CodeLines { start, lines, .. } = code_lines(state)?;
         let selection = state.selection();
         let padding = " ".repeat(width.max(1));
 
@@ -671,7 +678,7 @@ pub fn indent_code(width: usize) -> Command {
 #[must_use]
 pub fn outdent_code(width: usize) -> Command {
     command(move |state| {
-        let (start, text, lines) = code_lines(state)?;
+        let CodeLines { start, text, lines } = code_lines(state)?;
         let width = width.max(1);
 
         let mut removals = Vec::new();
