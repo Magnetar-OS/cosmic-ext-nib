@@ -15,9 +15,9 @@
 
 use std::collections::BTreeMap;
 
-use cosmic::iced::{Color, Font, Pixels};
-use cosmic::iced::font::{Style as FontStyle, Weight};
 use cosmic::iced::advanced::text::{Span, Wrapping};
+use cosmic::iced::font::{Style as FontStyle, Weight};
+use cosmic::iced::{Color, Font, Pixels};
 use nib_model::decoration::{DecorationSet, Rgba, Style as DecorationStyle};
 use nib_model::node::Node;
 
@@ -53,7 +53,7 @@ impl Caret {
 ///
 /// Resolved from the COSMIC theme rather than fixed, so a document follows the
 /// desktop into dark mode without anything else being told.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Colors {
     pub text: Color,
     /// Markers, rules, and anything that is furniture rather than content.
@@ -82,10 +82,7 @@ impl Colors {
             text,
             muted,
             link: accent,
-            selection: Color {
-                a: 0.30,
-                ..accent
-            },
+            selection: Color { a: 0.30, ..accent },
             caret: accent,
             code_background: Color::from(cosmic.bg_component_color()),
             quote_bar: Color { a: 0.4, ..accent },
@@ -132,7 +129,10 @@ fn syntax_palette(cosmic: &cosmic::cosmic_theme::Theme) -> BTreeMap<String, Colo
 }
 
 /// Everything about how the editor draws.
-#[derive(Debug, Clone)]
+///
+/// Compared as a whole when deciding whether a layout can be kept, so every
+/// field in it has to be one that can be compared.
+#[derive(Debug, Clone, PartialEq)]
 pub struct Style {
     pub text_size: f32,
     /// A multiple of the text size.

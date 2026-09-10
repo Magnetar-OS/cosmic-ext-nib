@@ -26,6 +26,7 @@
 //! correspondence so a hit test can be turned back into a document position
 //! without guessing.
 
+use nib_model::decoration::{Decoration, DecorationSet};
 use nib_model::node::Node;
 use nib_model::schema::NodeTypeId;
 
@@ -35,6 +36,27 @@ use nib_model::schema::NodeTypeId;
 /// part in shaping and hit-testing like any other character, and no author
 /// types it.
 pub const ATOM: &str = "\u{fffc}";
+
+/// What an inline atom draws as.
+///
+/// An image with alt text draws the alt, in brackets, rather than the bare
+/// replacement character. Nothing here ever resolves a `src` — the engine has
+/// no image loader and this is not the beginning of one — so the alt is the
+/// only thing the atom can honestly say about itself, and `[Quarterly chart]`
+/// says more than an empty box does.
+///
+/// The atom stays one document position wide however many characters it
+/// draws as; [`Block::doc_position`] already accounts for the two lengths
+/// differing.
+fn atom_text(node: &Node) -> String {
+    if node.type_name() == nib_model::basic::nodes::IMAGE
+        && let Some(alt) = node.attrs().get_str("alt")
+        && !alt.trim().is_empty()
+    {
+        return format!("[{}]", alt.trim());
+    }
+    ATOM.to_owned()
+}
 
 /// A run of a block's text and the document positions it corresponds to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -240,7 +262,7 @@ impl Walker {
                 // it.
                 text.push('\n');
             } else {
-                text.push_str(ATOM);
+                text.push_str(&atom_text(child));
             }
             doc += child.node_size();
             segments.push(Segment {
@@ -409,4 +431,158 @@ impl Block {
     pub fn contains(&self, pos: usize) -> bool {
         pos >= self.from && pos <= self.to
     }
+}
+
+// -- what survives a change --------------------------------------------------
+
+/// How many blocks at each end of a laid-out document survive a change to it.
+///
+/// # What this is for
+///
+/// Laying a block out means shaping its text, which is the expensive part of
+/// drawing a document — a few hundred blocks cost tens of milliseconds. A
+/// keystroke changes one block, so a view that lays every block out again for
+/// every keystroke does hundreds of times the work it needs to. This says how
+/// many blocks at the start and at the end are the same blocks as before, and
+/// therefore need no shaping: the ones at the start have not moved either, and
+/// the ones at the end are the same paragraph at a different height.
+///
+/// # What counts as the same
+///
+/// Two things, and a block has to pass both. The document's own diff says
+/// which positions changed, and it is cheap to ask because two fragments that
+/// were never edited apart share a pointer. The decorations have to agree as
+/// well, relative to the block: a spelling squiggle appearing under a word is
+/// as much a reason to lay its block out again as a letter arriving in it, and
+/// a squiggle that only moved because text was inserted above it has not
+/// changed at all.
+///
+/// Conservative in both directions: a block it is not sure about is a block it
+/// says nothing about, and the caller lays that one out again.
+#[must_use]
+pub fn reusable(
+    old_doc: &Node,
+    new_doc: &Node,
+    old_decorations: &DecorationSet,
+    new_decorations: &DecorationSet,
+    old_blocks: &[Block],
+    new_blocks: &[Block],
+) -> (usize, usize) {
+    let (before, after_new) =
+        unchanged_outside(old_doc, new_doc, old_decorations, new_decorations);
+
+    let prefix = new_blocks
+        .iter()
+        .take(old_blocks.len())
+        .take_while(|block| block.to < before)
+        .count();
+    let suffix = new_blocks
+        .iter()
+        .rev()
+        .zip(old_blocks.iter().rev())
+        .take_while(|(block, _)| block.node_pos >= after_new)
+        .count();
+    // A block cannot be both, and neither list may run past its own end.
+    let room = new_blocks.len().min(old_blocks.len()).saturating_sub(prefix);
+    (prefix, suffix.min(room))
+}
+
+/// The positions outside which nothing has changed: everything strictly before
+/// the first, and everything from the second on.
+///
+/// The second is in the *new* document's coordinates, because that is the one
+/// the blocks being laid out belong to.
+fn unchanged_outside(
+    old_doc: &Node,
+    new_doc: &Node,
+    old_decorations: &DecorationSet,
+    new_decorations: &DecorationSet,
+) -> (usize, usize) {
+    let (mut before, mut after_old, mut after_new) =
+        match old_doc.content().find_diff_start(new_doc.content(), 0) {
+            // Identical documents. Only the decorations can have moved.
+            None => (usize::MAX, 0, 0),
+            Some(start) => {
+                let ends = old_doc.content().find_diff_end(
+                    new_doc.content(),
+                    old_doc.content_size(),
+                    new_doc.content_size(),
+                );
+                let (old_end, new_end) = ends.unwrap_or((start, start));
+                (start, old_end.max(start), new_end.max(start))
+            }
+        };
+
+    let delta = shift_between(old_doc.content_size(), new_doc.content_size());
+    if let Some((dec_before, dec_old, dec_new)) =
+        decorations_changed(old_decorations, new_decorations, delta)
+    {
+        before = before.min(dec_before);
+        after_old = after_old.max(dec_old);
+        after_new = after_new.max(dec_new);
+    }
+    let _ = after_old;
+    (before, after_new)
+}
+
+/// How far the document's positions moved, as a signed offset.
+fn shift_between(old: usize, new: usize) -> isize {
+    let old = isize::try_from(old).unwrap_or(isize::MAX);
+    let new = isize::try_from(new).unwrap_or(isize::MAX);
+    new - old
+}
+
+fn shifted(pos: usize, delta: isize) -> usize {
+    pos.checked_add_signed(delta).unwrap_or(0)
+}
+
+/// Where two decoration sets stop agreeing, as the same three positions
+/// [`unchanged_outside`] deals in. `None` when they say the same thing
+/// everywhere.
+///
+/// Agreement in the tail means agreement *after the shift*: text inserted
+/// above a spelling squiggle moves it without changing it, and a block that
+/// has not otherwise changed should not be shaped again for that.
+fn decorations_changed(
+    old: &DecorationSet,
+    new: &DecorationSet,
+    delta: isize,
+) -> Option<(usize, usize, usize)> {
+    let (old, new) = (old.all(), new.all());
+    let head = old.iter().zip(new).take_while(|(a, b)| a == b).count();
+    if head == old.len() && head == new.len() {
+        return None;
+    }
+    let same_shifted = |a: &Decoration, b: &Decoration| {
+        shifted(a.from(), delta) == b.from()
+            && shifted(a.to(), delta) == b.to()
+            && a.kind() == b.kind()
+    };
+    let tail = old[head..]
+        .iter()
+        .rev()
+        .zip(new[head..].iter().rev())
+        .take_while(|(a, b)| same_shifted(a, b))
+        .count();
+
+    let changed_old = &old[head..old.len() - tail];
+    let changed_new = &new[head..new.len() - tail];
+    if changed_old.is_empty() && changed_new.is_empty() {
+        return None;
+    }
+
+    let before = changed_old
+        .iter()
+        .chain(changed_new)
+        .map(Decoration::from)
+        .min()
+        .unwrap_or(usize::MAX);
+    let after_old = changed_old.iter().map(Decoration::to).max().unwrap_or(0);
+    let after_new = changed_new
+        .iter()
+        .map(Decoration::to)
+        .max()
+        .unwrap_or(0)
+        .max(shifted(after_old, delta));
+    Some((before, after_old, after_new))
 }
