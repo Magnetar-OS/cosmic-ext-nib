@@ -1,0 +1,21 @@
+[package]
+name = "cosmic-ext-nib-css"
+description = "The safe subset of CSS a Nib document can carry"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+
+[lib]
+name = "nib_css"
+path = "src/lib.rs"
+
+[dependencies]
+# For `Rgba`, which is the model's colour vocabulary. A CSS parser does not
+# otherwise need a document model, and does not use one.
+nib-model.workspace = true
+
+[lints]
+workspace = true
