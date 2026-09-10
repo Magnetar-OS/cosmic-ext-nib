@@ -56,6 +56,7 @@ pub mod history;
 pub mod input_rules;
 pub mod keymap;
 pub mod mark;
+pub mod motion;
 pub mod node;
 pub mod replace;
 pub mod resolve;
@@ -64,20 +65,21 @@ pub mod search;
 pub mod slice;
 pub mod state;
 pub mod transform;
+pub mod vim;
 
 pub use attrs::{Attrs, Value};
 pub use build::Builder;
+pub use commands::Command;
 pub use content::{ContentExpr, ContentMatch};
 pub use decoration::{Decoration, DecorationSet};
 pub use fragment::Fragment;
+pub use keymap::{Binding, Key, Keymap, Mods};
 pub use mark::{Mark, Marks};
 pub use node::Node;
 pub use replace::ReplaceError;
 pub use resolve::{NodeRange, ResolvedPos};
-pub use slice::Slice;
-pub use commands::Command;
-pub use keymap::{Binding, Key, Keymap, Mods};
-pub use state::{EditorState, Plugin, PluginKey, Selection, Transaction};
 pub use schema::{
     AttrSpec, MarkSpec, MarkType, MarkTypeId, NodeSpec, NodeType, NodeTypeId, Schema, SchemaError,
 };
+pub use slice::Slice;
+pub use state::{EditorState, Plugin, PluginKey, Selection, Transaction};
