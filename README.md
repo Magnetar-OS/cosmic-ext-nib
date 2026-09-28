@@ -155,7 +155,10 @@ puts the caret in it without the user clicking first, and a `placeholder` is
 drawn — not inserted — while the document is empty, so there is nothing in it
 to select, serialise or send. `read_only` turns it into a reader: selection,
 motion, copy and links still work, and every transaction that would change the
-document is refused at the one place they all pass through.
+document is refused at the one place they all pass through. A click on a link
+in a reader, or a Ctrl+click in an editor, reports its target as
+`Action::Link`; a press that becomes a drag selects instead. Only targets the
+shared link policy (`nib_model::link`) accepts are reported.
 
 **Colour cannot hide text.** A sender’s colour is checked against the pixels
 it will actually land on, at the point of drawing, and replaced with the

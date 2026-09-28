@@ -256,34 +256,77 @@ pub fn spans<'a>(
     let code_block = is_code(block);
     let mut out: Vec<Span<'a, (), Font>> = Vec::new();
 
-    for (node, segment) in block.inline.iter().zip(&block.segments) {
+    for (index, range, decoration) in runs(block, decorations) {
+        let Some(node) = block.inline.get(index) else {
+            continue;
+        };
         let base = span_style(node, style, code_block);
-        // Split the node's text where decorations start and stop.
-        for (from, to, decoration) in split_by_decorations(segment, decorations) {
-            let text = &block.text[from..to];
-            if text.is_empty() {
-                continue;
-            }
-            let mut span = Span::new(text)
-                .size(Pixels(size * base.scale))
-                .font(base.font)
-                .color(base.color);
-            if let Some(background) = base.background {
-                span = span.background(background);
-            }
-            if base.underline {
-                span = span.underline(true);
-            }
-            if base.strikethrough {
-                span = span.strikethrough(true);
-            }
-            if let Some(decoration) = decoration {
-                span = apply_decoration(span, &decoration, style);
-            }
-            out.push(span);
+        let mut span = Span::new(&block.text[range])
+            .size(Pixels(size * base.scale))
+            .font(base.font)
+            .color(base.color);
+        if let Some(background) = base.background {
+            span = span.background(background);
         }
+        if base.underline {
+            span = span.underline(true);
+        }
+        if base.strikethrough {
+            span = span.strikethrough(true);
+        }
+        if let Some(decoration) = decoration {
+            span = apply_decoration(span, &decoration, style);
+        }
+        out.push(span);
     }
     out
+}
+
+/// The target of the link a span of [`spans`] belongs to, by the span's
+/// index — which is what a paragraph's hit test reports.
+///
+/// `decorations` must be the set the spans were built with: a decoration
+/// splits a node into several spans, and the index counts them.
+#[must_use]
+pub(crate) fn link_of_span(
+    block: &Block,
+    decorations: &DecorationSet,
+    span: usize,
+) -> Option<String> {
+    let (index, _, _) = runs(block, decorations).into_iter().nth(span)?;
+    block
+        .inline
+        .get(index)?
+        .marks()
+        .iter()
+        .find(|mark| mark.name() == nib_model::basic::marks::LINK)?
+        .attrs()
+        .get_str("href")
+        .map(str::to_owned)
+}
+
+/// The runs a block's inline content is shaped as: which inline node each
+/// was cut from, the text it covers, and the decoration over it.
+///
+/// Shared by [`spans`] and [`link_of_span`], so a span index means the same
+/// run to both. Empty runs are left out, because the shaper is never given
+/// them.
+fn runs(
+    block: &Block,
+    decorations: &DecorationSet,
+) -> Vec<(usize, std::ops::Range<usize>, Option<DecorationStyle>)> {
+    block
+        .segments
+        .iter()
+        .take(block.inline.len())
+        .enumerate()
+        .flat_map(|(index, segment)| {
+            split_by_decorations(segment, decorations)
+                .into_iter()
+                .map(move |(from, to, decoration)| (index, from..to, decoration))
+        })
+        .filter(|(_, range, _)| !range.is_empty())
+        .collect()
 }
 
 struct Inline {

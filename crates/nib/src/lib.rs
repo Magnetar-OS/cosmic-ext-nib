@@ -77,7 +77,16 @@ pub enum Action {
     Focused,
     /// The editor lost it.
     Blurred,
-    /// A link was activated, with its target.
+    /// A link was followed, with its target.
+    ///
+    /// In a [read-only](Editor::read_only) editor a click on a link follows
+    /// it; in an editable one a click puts the caret there, and the link
+    /// takes the platform's command modifier (Ctrl) held as well. A press
+    /// that turns into a drag selects instead, and so does a release off the
+    /// link it started on. Only a target [`is_followable`] accepts is ever
+    /// reported, whatever built the document.
+    ///
+    /// [`is_followable`]: nib_model::link::is_followable
     Link(String),
     /// The document was right-clicked, at a point in window coordinates and a
     /// position in the document.
@@ -323,6 +332,16 @@ struct Internal<P> {
     focused: bool,
     /// The document position a drag started at.
     drag_anchor: Option<usize>,
+    /// Whether the press that set `drag_anchor` has since moved the
+    /// selection, which makes it a drag rather than a click.
+    dragged: bool,
+    /// The target of the link a press landed on, followed if the release
+    /// lands on it too without a drag in between.
+    pressed_link: Option<String>,
+    /// The modifier keys held, as of the last change the window reported.
+    /// Kept whether or not the editor is focused: a Ctrl+click on a link is
+    /// often the click that focuses it.
+    modifiers: keyboard::Modifiers,
     /// The x the caret should try to keep when moving between lines.
     goal_x: Option<f32>,
     /// The slice most recently copied, so a paste inside the application keeps
@@ -368,6 +387,9 @@ impl<P> Default for Internal<P> {
             caret: caret::Animation::new(Instant::now()),
             focused: false,
             drag_anchor: None,
+            dragged: false,
+            pressed_link: None,
+            modifiers: keyboard::Modifiers::empty(),
             goal_x: None,
             clipboard: None,
             working: None,
@@ -777,16 +799,22 @@ where
 
     fn mouse_interaction(
         &self,
-        _tree: &Tree,
+        tree: &Tree,
         layout: Layout<'_>,
         cursor: mouse::Cursor,
         _viewport: &Rectangle,
         _renderer: &Renderer,
     ) -> mouse::Interaction {
-        if cursor.is_over(layout.bounds()) {
-            mouse::Interaction::Text
+        let bounds = layout.bounds();
+        let Some(point) = cursor.position_over(bounds) else {
+            return mouse::Interaction::None;
+        };
+        let internal = tree.state.downcast_ref::<Internal<Renderer::Paragraph>>();
+        let local = Point::new(point.x - bounds.x, point.y - bounds.y);
+        if self.follows_links(internal) && Self::link_at(internal, local).is_some() {
+            mouse::Interaction::Pointer
         } else {
-            mouse::Interaction::None
+            mouse::Interaction::Text
         }
     }
 
@@ -831,11 +859,24 @@ where
                     return;
                 };
                 let local = point - Vector::new(bounds.x, bounds.y);
+                let local = Point::new(local.x, local.y);
                 if !internal.focused {
                     internal.focused = true;
                     self.emit(shell, Action::Focused);
                 }
-                if let Some(pos) = Self::position_at(internal, Point::new(local.x, local.y)) {
+                internal.dragged = false;
+                internal.pressed_link = self
+                    .follows_links(internal)
+                    .then(|| Self::link_at(internal, local))
+                    .flatten();
+                // In an editor, the modifier says the click is for the link
+                // and not for the caret; in a reader a click may still become
+                // a drag that selects, so the press goes on as any other.
+                if internal.pressed_link.is_some() && !self.read_only {
+                    shell.capture_event();
+                    return;
+                }
+                if let Some(pos) = Self::position_at(internal, local) {
                     internal.drag_anchor = Some(pos);
                     internal.goal_x = None;
                     internal.caret.touch(internal.now);
@@ -856,6 +897,7 @@ where
                     && head != anchor
                 {
                     let doc = self.live(internal).doc().clone();
+                    internal.dragged = true;
                     self.select(internal, shell, Selection::between(&doc, anchor, head));
                     shell.request_redraw();
                 }
@@ -863,6 +905,16 @@ where
 
             Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) => {
                 internal.drag_anchor = None;
+                let Some(href) = internal.pressed_link.take() else {
+                    return;
+                };
+                let released_on = cursor.position_over(bounds).and_then(|point| {
+                    Self::link_at(internal, Point::new(point.x - bounds.x, point.y - bounds.y))
+                });
+                if !internal.dragged && released_on.as_deref() == Some(href.as_str()) {
+                    self.emit(shell, Action::Link(href));
+                    shell.capture_event();
+                }
             }
 
             Event::Mouse(mouse::Event::WheelScrolled { delta }) => {
@@ -922,12 +974,17 @@ where
                 shell.request_redraw();
             }
 
+            Event::Keyboard(keyboard::Event::ModifiersChanged(modifiers)) => {
+                internal.modifiers = *modifiers;
+            }
+
             Event::Keyboard(keyboard::Event::KeyPressed {
                 key,
                 modifiers,
                 text,
                 ..
             }) => {
+                internal.modifiers = *modifiers;
                 if !internal.focused {
                     return;
                 }
@@ -1004,6 +1061,7 @@ impl<P> operation::Focusable for Internal<P> {
     fn unfocus(&mut self) {
         self.focused = false;
         self.drag_anchor = None;
+        self.pressed_link = None;
     }
 }
 
@@ -1353,6 +1411,37 @@ impl<Message> Editor<'_, Message> {
             None => block.line_end(line),
         };
         Some(block.doc_position(offset.min(block.text.len())))
+    }
+
+    /// Whether a click on a link follows it: always in a reader, and with
+    /// the command modifier held in an editor.
+    fn follows_links<P>(&self, internal: &Internal<P>) -> bool {
+        self.read_only || internal.modifiers.command()
+    }
+
+    /// The target of the link under a point in the widget's own coordinates.
+    ///
+    /// The glyph under the pointer, not the caret position nearest it: a
+    /// click on the right half of a link's last letter is on the link, though
+    /// the caret it would place is after it. Nothing is under a point outside
+    /// every block, or past the end of a line. A target the link policy
+    /// refuses is treated as no link at all.
+    fn link_at<P>(internal: &Internal<P>, point: Point) -> Option<String>
+    where
+        P: cosmic::iced::advanced::text::Paragraph<Font = cosmic::iced::Font> + 'static,
+    {
+        let index = internal.bounds.iter().position(|b| b.contains(point))?;
+        let block = internal.blocks.get(index)?;
+        if !matches!(block.kind, blocks::Kind::Text) {
+            return None;
+        }
+        let bounds = internal.bounds.get(index)?;
+        let paragraph = internal.paragraphs.get(index)?;
+        let offset = internal.side_scroll.get(index).map_or(0.0, |(at, _)| *at);
+        let local = Point::new(point.x - bounds.x + offset, point.y - bounds.y);
+        let span = paragraph.hit_span(local)?;
+        style::link_of_span(block, &internal.built_decorations, span)
+            .filter(|href| nib_model::link::is_followable(href))
     }
 
     /// Puts the caret where the selection says it is.
