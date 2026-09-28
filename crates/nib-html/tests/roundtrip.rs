@@ -389,6 +389,21 @@ fn a_font_size_goes_out_as_the_ratio_it_came_in_as() {
 }
 
 #[test]
+fn alignment_goes_back_out_on_the_block_it_came_in_on() {
+    for input in [
+        r#"<p style="text-align: center">middle</p>"#,
+        r#"<h2 style="text-align: right">heading</h2>"#,
+    ] {
+        assert_eq!(round(input), input);
+    }
+    // The attribute spelling is read, and written as the declaration.
+    assert_eq!(
+        round(r#"<p align="justify">x</p>"#),
+        r#"<p style="text-align: justify">x</p>"#
+    );
+}
+
+#[test]
 fn a_link_that_would_run_script_or_open_a_local_file_keeps_its_text_not_its_target() {
     // Mail HTML is untrusted, and a link's target is handed to the desktop's
     // URL opener when it is clicked.

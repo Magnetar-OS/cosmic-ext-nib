@@ -291,7 +291,9 @@ pub fn base(schema: &Schema) -> Rules {
 
     // -- structure ---------------------------------------------------------
     if let Some(id) = node(nodes::PARAGRAPH) {
-        rules = rules.node(id, "p");
+        rules = rules
+            .parsing(ParseRule::new("p", Target::Node(id)))
+            .writing_node(id, WriteRule::new("p").writing(align_style));
     }
     if let Some(id) = node(nodes::BLOCKQUOTE) {
         rules = rules.node(id, "blockquote");
@@ -314,7 +316,9 @@ pub fn base(schema: &Schema) -> Rules {
             // attributes; `tag` here is only the fallback.
             WriteRule::new("h1").writing(|attrs| {
                 let level = attrs.get_int("level").unwrap_or(1).clamp(1, 6);
-                BTreeMap::from([("__tag".to_owned(), format!("h{level}"))])
+                let mut out = align_style(attrs);
+                out.insert("__tag".to_owned(), format!("h{level}"));
+                out
             }),
         );
     }
@@ -577,6 +581,19 @@ fn is_followable(href: &str) -> bool {
         || FOLLOWABLE_SCHEMES
             .iter()
             .any(|allowed| scheme.eq_ignore_ascii_case(allowed))
+}
+
+/// A block's alignment as the `style` it goes back out in.
+///
+/// Re-read through the alignment keywords rather than copied, so an attribute
+/// an application set to something that is not an alignment cannot carry a
+/// second declaration into the output.
+fn align_style(attrs: &Attrs) -> ElementAttrs {
+    let align = attrs
+        .get_str(nib_model::basic::attrs::ALIGN)
+        .and_then(nib_css::Align::parse)
+        .map(nib_css::Align::as_str);
+    style_attr("text-align", align)
 }
 
 /// One declaration, as the `style` attribute a span carries.
