@@ -266,3 +266,15 @@ fn an_important_flag_neither_drops_a_colour_nor_hides_a_hiding_attempt() {
     assert_eq!(d.color, Some(Rgba::new(255, 0, 0, 0xff)));
     assert_eq!(d.hiding, vec![Hiding::Removed]);
 }
+
+#[test]
+fn a_zero_font_size_is_reported_without_a_unit_too() {
+    // `0` is the one length CSS lets go unitless, and the one this exists to
+    // catch.
+    assert_eq!(parse("font-size: 0").hiding, vec![Hiding::Shrunk]);
+    assert_eq!(parse("font-size: 0.0").hiding, vec![Hiding::Shrunk]);
+    assert!(
+        parse("font-size: 12").scale.is_none(),
+        "any other unitless size is invalid CSS"
+    );
+}

@@ -349,6 +349,11 @@ fn font_scale(value: &str) -> Option<f32> {
             .ok()
             .map(|p| p * 4.0 / 3.0 / NOMINAL_PX);
     }
+    // Zero is the one length CSS allows without a unit — and the one a message
+    // hiding text reaches for.
+    if value.parse::<f32>().is_ok_and(|n| n.abs() < f32::EPSILON) {
+        return Some(0.0);
+    }
     // `smaller` and `larger` are relative to the parent in CSS; here they are
     // one step of the absolute scale, which is what they amount to in a
     // document whose parent is usually the reader's own size.
