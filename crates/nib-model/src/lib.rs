@@ -55,6 +55,7 @@ pub mod fragment;
 pub mod history;
 pub mod input_rules;
 pub mod keymap;
+pub mod link;
 pub mod mark;
 pub mod motion;
 pub mod node;

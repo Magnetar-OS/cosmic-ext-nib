@@ -5,6 +5,10 @@ releases before 1.1.1 are described by their git tags.
 
 ## [Unreleased]
 
+### Added
+
+- `nib_model::link::is_followable` and `FOLLOWABLE_SCHEMES`: the one link-target policy the HTML parser, the Markdown parser and the widget share.
+
 ### Fixed
 
 - HTML nested deeper than 256 elements no longer overflows the stack and aborts the process. The rest of such a subtree is read as text, and ignored elements inside it (`<script>`, `<style>`) stay dropped.
