@@ -85,8 +85,16 @@ fn split(dialect: Dialect, text: &str) -> Vec<Segment> {
     let mut out = Vec::new();
     let mut plain = String::new();
     let mut lines = text.lines().peekable();
+    let mut fence = Fence::default();
 
     while let Some(line) = lines.next() {
+        // Inside a fenced code block every line is code, however much it
+        // looks like a component or a module line.
+        if fence.feed(line) {
+            plain.push_str(line);
+            plain.push('\n');
+            continue;
+        }
         // MDX keeps its module lines verbatim; they are not prose.
         if dialect == Dialect::Mdx && (line.starts_with("import ") || line.starts_with("export ")) {
             flush(&mut out, &mut plain);
@@ -98,8 +106,9 @@ fn split(dialect: Dialect, text: &str) -> Vec<Segment> {
         {
             flush(&mut out, &mut plain);
             let mut body = String::new();
+            let mut code = Fence::default();
             for inner in lines.by_ref() {
-                if closes(inner, fence) {
+                if !code.feed(inner) && closes(inner, fence) {
                     break;
                 }
                 body.push_str(inner);
@@ -113,6 +122,44 @@ fn split(dialect: Dialect, text: &str) -> Vec<Segment> {
     }
     flush(&mut out, &mut plain);
     out
+}
+
+/// Whether the pre-pass is inside a fenced code block.
+///
+/// The component syntaxes are recognised a line at a time, before the
+/// Markdown parser has said where code is, so this follows the fences itself:
+/// an opening run of three or more backticks or tildes, indented at most three
+/// spaces, is closed by a run of the same character at least as long with
+/// nothing after it.
+#[derive(Default)]
+struct Fence {
+    open: Option<(char, usize)>,
+}
+
+impl Fence {
+    /// Takes one line; true when the line belongs to a code block, fences
+    /// included.
+    fn feed(&mut self, line: &str) -> bool {
+        let indent = line.len() - line.trim_start_matches(' ').len();
+        let run = |c: char| {
+            (indent <= 3)
+                .then(|| line[indent..].chars().take_while(|x| *x == c).count())
+                .filter(|n| *n >= 3)
+        };
+        if let Some((c, n)) = self.open {
+            if run(c).is_some_and(|m| m >= n && line[indent + m..].trim().is_empty()) {
+                self.open = None;
+            }
+            return true;
+        }
+        let opened = ['`', '~']
+            .into_iter()
+            .find_map(|c| run(c).map(|n| (c, n)))
+            // A backtick fence's info string may not itself hold a backtick.
+            .filter(|(c, n)| *c != '`' || !line[indent + n..].contains('`'));
+        self.open = opened;
+        opened.is_some()
+    }
 }
 
 fn flush(out: &mut Vec<Segment>, plain: &mut String) {

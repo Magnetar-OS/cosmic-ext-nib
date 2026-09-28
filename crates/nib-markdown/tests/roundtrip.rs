@@ -204,3 +204,24 @@ fn an_mdx_component_round_trips() {
     let input = "<Card title=\"Hello\" />\n";
     assert_eq!(round(&md, input), input);
 }
+
+#[test]
+fn a_code_block_is_not_read_as_a_component_or_a_module_line() {
+    let mdx = components(Dialect::Mdx);
+    let doc = mdx.parse("```js\nimport x from 'y'\n```\n");
+    assert_eq!(
+        doc.to_string(),
+        r#"doc(code_block[language=js]("import x from 'y'\n"))"#
+    );
+
+    let mdc = components(Dialect::Mdc);
+    let doc = mdc.parse("```\n::card\nhi\n::\n```\n");
+    assert_eq!(doc.to_string(), r#"doc(code_block("::card\nhi\n::\n"))"#);
+
+    // Nor does a fence inside a component's body end the component early.
+    let doc = mdc.parse("::card\n```\n::\n```\n::\n");
+    assert_eq!(
+        doc.to_string(),
+        r#"doc(component_block[name=card](code_block("::\n")))"#
+    );
+}

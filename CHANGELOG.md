@@ -12,3 +12,4 @@ releases before 1.1.1 are described by their git tags.
 - Paragraph and heading alignment is written back out to HTML as `text-align`, so an HTML round trip keeps it.
 - CSS values carrying `!important` are read: `color: red !important` gives a colour, and `display: none !important` is reported as hiding.
 - A unitless `font-size: 0` is reported as hiding text.
+- MDX and MDC: lines inside a fenced code block are no longer taken as components or module lines, which deleted the code.
