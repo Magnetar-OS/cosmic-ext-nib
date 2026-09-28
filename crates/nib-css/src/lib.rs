@@ -220,13 +220,29 @@ pub fn parse(declarations: &str) -> Declarations {
             continue;
         };
         let property = property.trim().to_ascii_lowercase();
-        let value = value.trim();
+        let value = without_important(value.trim());
         if property.is_empty() || value.is_empty() {
             continue;
         }
         apply(&mut out, &property, value);
     }
     out
+}
+
+/// A value without its `!important` flag.
+///
+/// Mail generators put the flag on nearly every declaration. It says nothing
+/// about what the value *is*, and left in place it made `red !important` an
+/// unreadable colour and `none !important` a `display` nobody reported.
+fn without_important(value: &str) -> &str {
+    // ASCII lowercasing keeps every byte where it was, so a length measured on
+    // the lowered copy is a valid cut of the original.
+    let lower = value.to_ascii_lowercase();
+    lower
+        .strip_suffix("important")
+        .map(str::trim_end)
+        .and_then(|rest| rest.strip_suffix('!'))
+        .map_or(value, |rest| value[..rest.len()].trim_end())
 }
 
 /// Whether a value would cause something to be fetched or executed.

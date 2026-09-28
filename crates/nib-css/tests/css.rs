@@ -252,3 +252,17 @@ fn malformed_input_is_skipped_rather_than_fatal() {
 fn an_empty_style_attribute_says_nothing() {
     assert_eq!(parse(""), Declarations::default());
 }
+
+// ---------------------------------------------------------------------------
+// `!important`, and the zero that needs no unit
+// ---------------------------------------------------------------------------
+
+#[test]
+fn an_important_flag_neither_drops_a_colour_nor_hides_a_hiding_attempt() {
+    // Mail generators append `!important` to nearly everything. Reading it as
+    // part of the value lost the colour, and let `display: none !important`
+    // go unreported.
+    let d = parse("color: red !important; display: none ! IMPORTANT");
+    assert_eq!(d.color, Some(Rgba::new(255, 0, 0, 0xff)));
+    assert_eq!(d.hiding, vec![Hiding::Removed]);
+}
