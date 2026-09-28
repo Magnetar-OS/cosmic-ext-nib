@@ -17,3 +17,4 @@ releases before 1.1.1 are described by their git tags.
 - Markdown export keeps link and image titles, and destinations containing spaces or parentheses.
 - Markdown export escapes literal text that would read back as HTML, an entity, an ordered list, strikethrough, a setext heading or a table cell break.
 - A blockquote of several paragraphs stays one quote through Markdown export.
+- A list inside a quote keeps its markers in order (`> - one`) in Markdown and plain-text output.

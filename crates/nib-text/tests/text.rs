@@ -129,6 +129,23 @@ fn a_word_longer_than_the_column_is_left_long() {
 }
 
 #[test]
+fn a_list_inside_a_quote_keeps_its_markers_in_order() {
+    // The quote's `>` comes first on every line, the list's bullet after it.
+    let b = b();
+    let item = |t: &str| {
+        b.node(
+            nodes::LIST_ITEM,
+            nodes![b.node(nodes::PARAGRAPH, nodes![b.text(t)])],
+        )
+    };
+    let doc = b.doc(nodes![b.node(
+        nodes::BLOCKQUOTE,
+        nodes![b.node(nodes::BULLET_LIST, nodes![item("one"), item("two")])]
+    )]);
+    assert_eq!(text().to_text(&doc), "> - one\n> - two");
+}
+
+#[test]
 fn the_default_wrap_leaves_room_to_be_quoted_twice() {
     let b = b();
     let long = "word ".repeat(30);

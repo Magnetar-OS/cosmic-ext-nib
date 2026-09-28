@@ -278,6 +278,13 @@ fn link_and_image_targets_and_titles_survive() {
 }
 
 #[test]
+fn a_list_inside_a_quote_keeps_its_markers_in_order() {
+    let md = gfm();
+    let input = "> - one\n> - two\n";
+    assert_eq!(round(&md, input), input);
+}
+
+#[test]
 fn a_code_block_is_not_read_as_a_component_or_a_module_line() {
     let mdx = components(Dialect::Mdx);
     let doc = mdx.parse("```js\nimport x from 'y'\n```\n");

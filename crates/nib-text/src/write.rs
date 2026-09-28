@@ -102,11 +102,15 @@ fn list(node: &Node, options: Options, prefix: &str, start: Option<i64>, out: &m
             None => "",
         };
         let indent = " ".repeat(marker.chars().count());
+        let nested = format!("{prefix}{indent}");
         let mut body = String::new();
-        blocks(item, options, &format!("{prefix}{indent}"), &mut body);
+        blocks(item, options, &nested, &mut body);
 
         let mut lines = body.lines();
         if let Some(first) = lines.next() {
+            // The first line carries the whole prefix, an enclosing quote's
+            // `>` included; the marker replaces only the indent at its end.
+            let first = first.strip_prefix(nested.as_str()).unwrap_or(first);
             let _ = writeln!(out, "{prefix}{marker}{checkbox}{}", first.trim_start());
         }
         for line in lines {

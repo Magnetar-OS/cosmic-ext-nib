@@ -145,13 +145,22 @@ impl Writer<'_> {
             };
             // The first line carries the marker; the rest line up under it.
             let indent = " ".repeat(marker.chars().count());
+            let nested = self.nested(&indent);
             let mut body = String::new();
-            self.nested(&indent).blocks(item, &mut body);
+            nested.blocks(item, &mut body);
             let mut lines = body.lines();
             if let Some(first) = lines.next() {
+                // The first line already carries the whole prefix, the
+                // enclosing quote's markers included; the marker replaces
+                // only the indent at its end.
                 out.push_str(&self.prefix);
                 out.push_str(&marker);
-                out.push_str(first.trim_start());
+                out.push_str(
+                    first
+                        .strip_prefix(nested.prefix.as_str())
+                        .unwrap_or(first)
+                        .trim_start(),
+                );
                 out.push('\n');
             }
             for line in lines {
