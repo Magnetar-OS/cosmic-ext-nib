@@ -238,6 +238,14 @@ fn code_that_contains_its_own_delimiters_survives() {
 }
 
 #[test]
+fn a_quote_of_several_paragraphs_stays_one_quote() {
+    let md = gfm();
+    let input = "> a\n>\n> b\n";
+    assert_eq!(round(&md, input), input);
+    survives(&md, "- item\n\n  > a\n  >\n  > b\n");
+}
+
+#[test]
 fn prose_that_would_read_as_syntax_survives() {
     let md = gfm();
     for input in [

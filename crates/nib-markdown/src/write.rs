@@ -58,7 +58,10 @@ impl Writer<'_> {
     fn blocks(&self, parent: &Node, out: &mut String) {
         for (i, child) in parent.content().into_iter().enumerate() {
             if i > 0 && !Self::tight_after(parent, i) {
-                out.push('\n');
+                // The blank line keeps the prefix's markers: a bare blank
+                // line inside a quote ends it, and the next paragraph would
+                // come back as a second quote.
+                self.line("", out);
             }
             self.block(child, out);
         }
