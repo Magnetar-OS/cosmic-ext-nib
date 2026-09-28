@@ -47,9 +47,23 @@ struct Open {
     preserve: bool,
 }
 
+/// How many elements deep the walk follows the tree before reading the rest of
+/// a subtree as plain text.
+///
+/// The walk recurses once per element, and a stack overflow is not a panic —
+/// it aborts the process, so nothing above can catch it. The HTML parser sets
+/// no limit of its own, so a message of fifty thousand nested `<div>`s, a
+/// quarter of a megabyte, was enough to take a mail client down on open.
+/// Real messages nest a few dozen deep; newsletters built from tables inside
+/// tables reach perhaps a hundred. Past this, structure and styling stop and
+/// the text keeps coming.
+const MAX_DEPTH: usize = 256;
+
 struct Ctx<'a> {
     rules: &'a Rules,
     stack: Vec<Open>,
+    /// How many elements deep the walk currently is.
+    nesting: usize,
     marks: Marks,
     /// True when the last thing written was whitespace, so a run of it
     /// collapses to one space.
@@ -69,6 +83,7 @@ impl<'a> Ctx<'a> {
                 solid: true,
                 preserve: false,
             }],
+            nesting: 0,
             marks: Marks::none(),
             pending_space: false,
         }
@@ -303,39 +318,71 @@ fn walk(ctx: &mut Ctx<'_>, handle: &Handle) {
         NodeData::Text { contents } => {
             ctx.text(&contents.borrow());
         }
+        NodeData::Element { .. } if ctx.nesting >= MAX_DEPTH => flatten(ctx, handle),
         NodeData::Element { name, attrs, .. } => {
-            let tag = name.local.to_string();
-            let attrs = element_attrs(&attrs.borrow());
-            let element = Element {
-                tag: tag.clone(),
-                children: child_elements(handle),
-                attrs: attrs.clone(),
-            };
-            // Styling first, and for *every* element rather than only the ones
-            // a rule names: a `<div style="color:#c00">` has no mark of its
-            // own — it is transparent — and its colour still belongs to the
-            // text inside it. Read before the rule is looked up so the two
-            // cannot disagree about which elements are styled.
-            let styling = crate::styling::of(ctx.rules.schema(), &element);
-            let outer_marks = ctx.marks.clone();
-            for mark in &styling.marks {
-                ctx.marks = Mark::add_to_set(mark, &ctx.marks);
-            }
-
-            let Some(rule) = ctx.rules.rule_for(&tag, &attrs) else {
-                // An unknown tag is a container, not content. Dropping it
-                // outright would lose text; treating it as its own node would
-                // invent structure the schema never declared.
-                walk_children(ctx, handle);
-                ctx.marks = outer_marks;
-                return;
-            };
-            walk_rule(ctx, handle, &element, rule, &styling);
-            ctx.marks = outer_marks;
+            ctx.nesting += 1;
+            walk_element(ctx, handle, name.local.as_ref(), &attrs.borrow());
+            ctx.nesting -= 1;
         }
         NodeData::Document | NodeData::Doctype { .. } => walk_children(ctx, handle),
         NodeData::Comment { .. } | NodeData::ProcessingInstruction { .. } => {}
     }
+}
+
+/// Reads a subtree past [`MAX_DEPTH`] as text, without recursing.
+///
+/// What an ignored element holds is still ignored — a `<script>` a thousand
+/// levels down is no more content than one at the top.
+fn flatten(ctx: &mut Ctx<'_>, root: &Handle) {
+    let mut pending = vec![root.clone()];
+    while let Some(handle) = pending.pop() {
+        match &handle.data {
+            NodeData::Text { contents } => ctx.text(&contents.borrow()),
+            NodeData::Element { name, attrs, .. } => {
+                let attrs = element_attrs(&attrs.borrow());
+                let ignored = ctx
+                    .rules
+                    .rule_for(name.local.as_ref(), &attrs)
+                    .is_some_and(|rule| matches!(rule.target, Target::Ignore));
+                if !ignored {
+                    // Reversed, so they come off the stack in document order.
+                    pending.extend(handle.children.borrow().iter().rev().cloned());
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// One element within the depth limit: its styling, then its rule.
+fn walk_element(ctx: &mut Ctx<'_>, handle: &Handle, tag: &str, attrs: &[html5ever::Attribute]) {
+    let attrs = element_attrs(attrs);
+    let element = Element {
+        tag: tag.to_owned(),
+        children: child_elements(handle),
+        attrs: attrs.clone(),
+    };
+    // Styling first, and for *every* element rather than only the ones
+    // a rule names: a `<div style="color:#c00">` has no mark of its
+    // own — it is transparent — and its colour still belongs to the
+    // text inside it. Read before the rule is looked up so the two
+    // cannot disagree about which elements are styled.
+    let styling = crate::styling::of(ctx.rules.schema(), &element);
+    let outer_marks = ctx.marks.clone();
+    for mark in &styling.marks {
+        ctx.marks = Mark::add_to_set(mark, &ctx.marks);
+    }
+
+    let Some(rule) = ctx.rules.rule_for(tag, &attrs) else {
+        // An unknown tag is a container, not content. Dropping it
+        // outright would lose text; treating it as its own node would
+        // invent structure the schema never declared.
+        walk_children(ctx, handle);
+        ctx.marks = outer_marks;
+        return;
+    };
+    walk_rule(ctx, handle, &element, rule, &styling);
+    ctx.marks = outer_marks;
 }
 
 /// What one element's rule does, with its styling already on the mark stack.

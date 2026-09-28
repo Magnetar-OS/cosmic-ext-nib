@@ -387,3 +387,41 @@ fn a_font_size_goes_out_as_the_ratio_it_came_in_as() {
         r#"<p><span style="font-size: 150%">big</span></p>"#
     );
 }
+
+#[test]
+fn nesting_deeper_than_any_real_message_neither_overflows_nor_loses_the_text() {
+    // Fifty kilobytes of markup, parsed on a thread with the stack an
+    // async runtime's worker gets. Before the depth cap this aborted the
+    // process: a stack overflow is not a panic, so nothing above can catch it.
+    for (open, close) in [
+        ("<div>", "</div>"),
+        ("<blockquote>", "</blockquote>"),
+        ("<span>", "</span>"),
+        ("<ul><li>", "</li></ul>"),
+    ] {
+        let source = format!("{}deep{}", open.repeat(10_000), close.repeat(10_000));
+        let text = std::thread::Builder::new()
+            .stack_size(2 * 1024 * 1024)
+            .spawn(move || html().parse(&source).text_content())
+            .expect("a thread")
+            .join()
+            .expect("the parse finished");
+        assert_eq!(text, "deep", "{open}");
+    }
+}
+
+#[test]
+fn a_script_below_the_depth_cap_is_still_dropped() {
+    let source = format!(
+        "{}<script>alert(1)</script>kept{}",
+        "<div>".repeat(1_000),
+        "</div>".repeat(1_000)
+    );
+    let text = std::thread::Builder::new()
+        .stack_size(2 * 1024 * 1024)
+        .spawn(move || html().parse(&source).text_content())
+        .expect("a thread")
+        .join()
+        .expect("the parse finished");
+    assert_eq!(text, "kept");
+}
