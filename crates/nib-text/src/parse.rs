@@ -15,16 +15,23 @@ use nib_model::schema::Schema;
 
 use crate::quote::{Block, blocks};
 
+/// The signature separator as it is written: RFC 3676's two hyphens and a
+/// space.
+const SEPARATOR: &str = "-- ";
+
 /// Reads plain text into a document.
 #[must_use]
 pub fn parse(schema: &Schema, text: &str) -> Node {
     let mut content: Vec<Node> = Vec::new();
     for block in blocks(text) {
         match block {
-            // A signature is prose that happens to be at the bottom; the
-            // separator itself is not content.
-            Block::Prose(text) | Block::Signature(text) => {
-                content.extend(paragraphs(schema, &text));
+            Block::Prose(text) => content.extend(paragraphs(schema, &text)),
+            // A signature is prose that happens to be at the bottom, and its
+            // separator is kept as the line that opens it: a draft reopened
+            // from text and written out again must still say where the
+            // message ends, or the reader's client cannot set it apart.
+            Block::Signature(text) => {
+                content.extend(paragraphs(schema, &format!("{SEPARATOR}\n{text}")));
             }
             Block::Quoted { text, .. } => {
                 let inner = paragraphs(schema, &text);

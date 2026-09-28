@@ -237,6 +237,24 @@ fn quoting_a_body_prefixes_every_line_and_leaves_no_trailing_space() {
 // ---------------------------------------------------------------------------
 
 #[test]
+fn a_signature_keeps_its_separator_through_a_round_trip() {
+    // A draft is saved as text and reopened through `parse`. Dropping the
+    // `-- ` line merged the signature into the message, and the next send
+    // went out without the marker that lets a reader's client fold it.
+    let body = "Hi\n\n-- \nAda";
+    let doc = text().parse(body);
+    let written = nib_text::to_text(
+        &doc,
+        Options {
+            wrap: None,
+            ..Options::default()
+        },
+    );
+    assert_eq!(written, body);
+    assert!(matches!(blocks(&written).last(), Some(Block::Signature(s)) if s == "Ada"));
+}
+
+#[test]
 fn blank_lines_separate_paragraphs() {
     let doc = text().parse("one\n\ntwo");
     assert_eq!(
