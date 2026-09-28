@@ -238,6 +238,23 @@ fn code_that_contains_its_own_delimiters_survives() {
 }
 
 #[test]
+fn prose_that_would_read_as_syntax_survives() {
+    let md = gfm();
+    for input in [
+        "a \\<b\\> c\n",
+        "AT\\&amp;T\n",
+        "1986\\. A good year\n",
+        "1\\) one\n",
+        "a \\~\\~b\\~\\~ c\n",
+        "a  \n\\===\n",
+        "| a | b |\n| --- | --- |\n| x \\| y | z |\n",
+        "| a | b |\n| --- | --- |\n| `x \\| y` | z |\n",
+    ] {
+        survives(&md, input);
+    }
+}
+
+#[test]
 fn link_and_image_targets_and_titles_survive() {
     let md = gfm();
     for input in [

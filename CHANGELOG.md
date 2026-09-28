@@ -15,3 +15,4 @@ releases before 1.1.1 are described by their git tags.
 - MDX and MDC: lines inside a fenced code block are no longer taken as components or module lines, which deleted the code.
 - Markdown export of code that contains backticks no longer ends the code block or span early.
 - Markdown export keeps link and image titles, and destinations containing spaces or parentheses.
+- Markdown export escapes literal text that would read back as HTML, an entity, an ordered list, strikethrough, a setext heading or a table cell break.

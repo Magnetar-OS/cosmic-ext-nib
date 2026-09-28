@@ -165,7 +165,9 @@ impl Writer<'_> {
             .map(|row| {
                 row.content()
                     .iter()
-                    .map(|cell| self.inline_of_blocks(cell))
+                    // A pipe ends the cell wherever it is, inside a code span
+                    // or a link included, so every one is escaped.
+                    .map(|cell| self.inline_of_blocks(cell).replace('|', "\\|"))
                     .collect()
             })
             .collect();
@@ -411,17 +413,55 @@ fn write_props(node: &Node, skip: &[&str], dialect: Dialect) -> String {
 /// Escapes what would otherwise be read as syntax, and nothing else.
 fn escape(text: &str, out: &mut String) {
     let mut at_line_start = out.is_empty() || out.ends_with('\n');
-    for ch in text.chars() {
+    let mut chars = text.char_indices().peekable();
+    while let Some((i, ch)) = chars.next() {
+        let next = chars.peek().map(|(_, c)| *c);
         match ch {
-            // Always ambiguous inside a line.
-            '*' | '_' | '`' | '[' | ']' | '\\' => {
+            // Always ambiguous inside a line. A tilde is strikethrough on its
+            // own, and a fence in a run of three.
+            '*' | '_' | '`' | '[' | ']' | '\\' | '~' => {
                 out.push('\\');
                 out.push(ch);
             }
-            // Only ambiguous where a block marker could start.
-            '#' | '-' | '+' | '>' if at_line_start => {
+            // The start of a tag, a comment or an autolink, which the parser
+            // would take and the document would lose.
+            '<' if next
+                .is_some_and(|c| c.is_ascii_alphabetic() || matches!(c, '/' | '!' | '?')) =>
+            {
+                out.push_str("\\<");
+            }
+            // The start of an entity or a character reference.
+            '&' if next.is_some_and(|c| c.is_ascii_alphanumeric() || c == '#') => {
+                out.push_str("\\&");
+            }
+            // Only ambiguous where a block marker could start: a heading, a
+            // list, a quote, or the underline that turns the line above into
+            // a heading.
+            '#' | '-' | '+' | '>' | '=' if at_line_start => {
                 out.push('\\');
                 out.push(ch);
+            }
+            // `1986. A year` and `1) one` open an ordered list.
+            '0'..='9' if at_line_start => {
+                let digits = text[i..].bytes().take_while(u8::is_ascii_digit).count();
+                let after = &text[i + digits..];
+                out.push_str(&text[i..i + digits]);
+                for _ in 1..digits {
+                    chars.next();
+                }
+                if digits <= 9
+                    && let Some(punct) = after.chars().next().filter(|c| matches!(c, '.' | ')'))
+                    && after[1..]
+                        .chars()
+                        .next()
+                        .is_none_or(|c| c == ' ' || c == '\t')
+                {
+                    out.push('\\');
+                    out.push(punct);
+                    chars.next();
+                }
+                at_line_start = false;
+                continue;
             }
             _ => out.push(ch),
         }
