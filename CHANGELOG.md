@@ -13,3 +13,4 @@ releases before 1.1.1 are described by their git tags.
 - CSS values carrying `!important` are read: `color: red !important` gives a colour, and `display: none !important` is reported as hiding.
 - A unitless `font-size: 0` is reported as hiding text.
 - MDX and MDC: lines inside a fenced code block are no longer taken as components or module lines, which deleted the code.
+- Markdown export of code that contains backticks no longer ends the code block or span early.

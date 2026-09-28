@@ -205,6 +205,38 @@ fn an_mdx_component_round_trips() {
     assert_eq!(round(&md, input), input);
 }
 
+// ---------------------------------------------------------------------------
+// Round trips of content that looks like syntax
+// ---------------------------------------------------------------------------
+
+/// Parses, writes and parses again; the two documents must be the same.
+///
+/// Compared as documents rather than as text, because the writer may choose a
+/// different spelling of the same thing — and must never choose a spelling of
+/// a different thing.
+fn survives(md: &Markdown, input: &str) {
+    let doc = md.parse(input);
+    let written = md.to_markdown(&doc);
+    assert_eq!(
+        md.parse(&written),
+        doc,
+        "{input:?} was written as {written:?}"
+    );
+}
+
+#[test]
+fn code_that_contains_its_own_delimiters_survives() {
+    let md = gfm();
+    for input in [
+        "````\na\n```\nb\n````\n",
+        "x `` a`b `` y\n",
+        "x `` `a `` y\n",
+        "x ``` a``b ``` y\n",
+    ] {
+        survives(&md, input);
+    }
+}
+
 #[test]
 fn a_code_block_is_not_read_as_a_component_or_a_module_line() {
     let mdx = components(Dialect::Mdx);

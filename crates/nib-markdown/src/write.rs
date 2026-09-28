@@ -94,14 +94,17 @@ impl Writer<'_> {
             nodes::HORIZONTAL_RULE => self.line("---", out),
             nodes::CODE_BLOCK => {
                 let language = node.attrs().get_str("language").unwrap_or("");
-                self.line(&format!("```{language}"), out);
+                let text = node.text_content();
+                // Longer than any run of backticks the code holds, so no line
+                // of it can close the block early.
+                let fence = "`".repeat(longest_run(&text, '`').max(2) + 1);
+                self.line(&format!("{fence}{language}"), out);
                 // A fenced block's content conventionally ends with a newline;
                 // splitting on it would add a line that was never there.
-                let text = node.text_content();
                 for line in text.strip_suffix('\n').unwrap_or(&text).split('\n') {
                     self.line(line, out);
                 }
-                self.line("```", out);
+                self.line(&fence, out);
             }
             nodes::BLOCKQUOTE => {
                 let inner = self.nested("> ");
@@ -229,6 +232,18 @@ impl Writer<'_> {
                 open.push(delim.clone());
             }
 
+            // Inline code excludes every other mark, so a code run stands
+            // alone and is written whole: its delimiter depends on what it
+            // holds, which a shared delimiter cannot.
+            if let Some(text) = child.text()
+                && marks
+                    .iter()
+                    .any(|m| m.name() == nib_model::basic::marks::CODE)
+            {
+                code_span(text, &mut out);
+                continue;
+            }
+
             // A link's brackets sit outside its delimiters and carry a target,
             // so they are written around the run rather than as a delimiter.
             let link = marks
@@ -302,10 +317,27 @@ fn delimiter(name: &str) -> Option<&'static str> {
     match name {
         marks::STRONG => Some("**"),
         marks::EM => Some("*"),
-        marks::CODE => Some("`"),
         marks::STRIKETHROUGH => Some("~~"),
+        // Inline code is written whole by `code_span`.
         _ => None,
     }
+}
+
+/// The longest run of `c` in `text`.
+fn longest_run(text: &str, c: char) -> usize {
+    text.split(|x| x != c).map(str::len).max().unwrap_or(0)
+}
+
+/// A code span, delimited by one more backtick than the longest run inside
+/// it, and padded with a space where the content would otherwise touch the
+/// delimiter or lose a space to the parser's stripping of one from each end.
+fn code_span(text: &str, out: &mut String) {
+    let fence = "`".repeat(longest_run(text, '`') + 1);
+    let pad = text.starts_with('`')
+        || text.ends_with('`')
+        || (text.starts_with(' ') && text.ends_with(' ') && !text.trim().is_empty());
+    let pad = if pad { " " } else { "" };
+    let _ = write!(out, "{fence}{pad}{text}{pad}{fence}");
 }
 
 /// A component's props, in the dialect's spelling.
