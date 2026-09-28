@@ -389,6 +389,41 @@ fn a_font_size_goes_out_as_the_ratio_it_came_in_as() {
 }
 
 #[test]
+fn a_link_that_would_run_script_or_open_a_local_file_keeps_its_text_not_its_target() {
+    // Mail HTML is untrusted, and a link's target is handed to the desktop's
+    // URL opener when it is clicked.
+    for href in [
+        "javascript:alert(1)",
+        " JavaScript:alert(1)",
+        "java&#9;script:alert(1)",
+        "java&#10;script:alert(1)",
+        "vbscript:msgbox(1)",
+        "data:text/html,<script>alert(1)</script>",
+        "file:///home/user/.bashrc",
+        "smb://attacker.example/share",
+    ] {
+        let doc = html().parse(&format!(r#"<p><a href="{href}">x</a></p>"#));
+        assert_eq!(
+            doc.to_string(),
+            r#"doc(paragraph("x"))"#,
+            "{href:?} survived"
+        );
+    }
+    for href in [
+        "https://example.test/",
+        "HTTP://example.test/",
+        "mailto:ada@example.test",
+        "tel:+15550100",
+        "#section",
+        "/relative/path",
+        "page.html?at=12:30",
+    ] {
+        let input = format!(r#"<p><a href="{href}">x</a></p>"#);
+        assert_eq!(round(&input), input, "{href:?} was dropped");
+    }
+}
+
+#[test]
 fn nesting_deeper_than_any_real_message_neither_overflows_nor_loses_the_text() {
     // Fifty kilobytes of markup, parsed on a thread with the stack an
     // async runtime's worker gets. Before the depth cap this aborted the

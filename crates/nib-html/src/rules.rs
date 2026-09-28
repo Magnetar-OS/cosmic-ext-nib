@@ -482,7 +482,10 @@ pub fn base(schema: &Schema) -> Rules {
     if let Some(id) = mark(marks::LINK) {
         rules = rules
             .parsing(ParseRule::new("a", Target::Mark(id)).reading(|el| {
-                let mut out = nib_model::attrs! { "href" => el.attr("href")? };
+                // A target the reader should not be sent to leaves the text
+                // and drops the link: no attributes, no mark.
+                let href = el.attr("href").filter(|href| is_followable(href))?;
+                let mut out = nib_model::attrs! { "href" => href };
                 if let Some(title) = el.attr("title") {
                     out = out.set("title", title);
                 }
@@ -535,6 +538,45 @@ pub fn base(schema: &Schema) -> Rules {
     }
 
     rules
+}
+
+/// The schemes a link read from HTML may carry.
+///
+/// An allow-list, because the HTML arriving here is mostly mail — untrusted —
+/// and a link's target is handed to the desktop's URL opener when it is
+/// clicked. `javascript:` and `data:` are the familiar dangers; `file:` and
+/// the network filesystems (`smb:`, `sftp:`, …) are the ones a desktop adds,
+/// opening a local path or mounting a share on a single click. Anything not
+/// named here is refused rather than enumerated: a scheme nobody listed is a
+/// scheme nobody reviewed.
+const FOLLOWABLE_SCHEMES: [&str; 5] = ["http", "https", "mailto", "tel", "ftp"];
+
+/// Whether a link target may be kept.
+///
+/// Read the way a URL parser reads it, not the way it looks: leading and
+/// trailing controls and spaces are ignored and tabs and newlines anywhere are
+/// removed before the scheme is read, so `java&#9;script:` is `javascript:`
+/// here exactly as it is to whatever opens it. A target with no scheme —
+/// `#section`, `/path`, `page.html?at=12:30` — is relative and kept.
+fn is_followable(href: &str) -> bool {
+    let cleaned: String = href
+        .trim_matches(|c: char| c <= ' ')
+        .chars()
+        .filter(|c| !matches!(c, '\t' | '\n' | '\r'))
+        .collect();
+    let Some((scheme, _)) = cleaned.split_once(':') else {
+        return true;
+    };
+    // A scheme is a letter and then letters, digits, `+`, `-` and `.`. A colon
+    // after anything else sits in a path, a query or a fragment.
+    let is_scheme = scheme.starts_with(|c: char| c.is_ascii_alphabetic())
+        && scheme
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'));
+    !is_scheme
+        || FOLLOWABLE_SCHEMES
+            .iter()
+            .any(|allowed| scheme.eq_ignore_ascii_case(allowed))
 }
 
 /// One declaration, as the `style` attribute a span carries.
