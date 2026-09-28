@@ -227,45 +227,38 @@ impl Speller {
     /// The misspelled word at a position, and where it is.
     ///
     /// For a menu that offers to correct or learn the word under the pointer.
+    /// The word and its range are the ones [`Speller::decorate`] marks, so a
+    /// correction replaces exactly what was underlined.
     #[must_use]
     pub fn word_at(&self, doc: &Node, position: usize) -> Option<(String, usize, usize)> {
         let at = doc.resolve(position);
-        if !at.parent().is_textblock() || at.parent().typ().spec().code {
+        let parent = at.parent();
+        if !parent.is_textblock() || parent.typ().spec().code {
             return None;
         }
-        let start = at.start(at.depth());
-        let text = at.parent().text_content();
-        let offset = position.saturating_sub(start).min(text.len());
-
-        text.unicode_word_indices().find_map(|(index, word)| {
-            let (from, to) = (index, index + word.len());
-            (offset >= from && offset <= to && !self.is_correct(word))
-                .then(|| (word.to_owned(), start + from, start + to))
-        })
+        prose_runs(parent, at.start(at.depth()))
+            .into_iter()
+            .find(|(start, text)| (*start..=start + text.len()).contains(&position))
+            .and_then(|(start, text)| {
+                let offset = position - start;
+                text.unicode_word_indices().find_map(|(index, word)| {
+                    let (from, to) = (index, index + word.len());
+                    (offset >= from && offset <= to && !self.is_correct(word))
+                        .then(|| (word.to_owned(), start + from, start + to))
+                })
+            })
     }
 
-    /// Scans one textblock, skipping runs marked as code.
+    /// Scans one textblock's prose.
     fn check_block(&self, node: &Node, start: usize, out: &mut Vec<Decoration>) {
-        let mut offset = start;
-        for child in node.content() {
-            let size = child.node_size();
-            let Some(text) = child.text() else {
-                offset += size;
-                continue;
-            };
-            // Inline code is code too.
-            let is_code = child.marks().iter().any(|mark| mark.typ().spec().code);
-            if is_code {
-                offset += size;
-                continue;
-            }
+        for (run_start, text) in prose_runs(node, start) {
             for (index, word) in text.unicode_word_indices() {
                 if self.is_correct(word) {
                     continue;
                 }
                 out.push(Decoration::inline(
-                    offset + index,
-                    offset + index + word.len(),
+                    run_start + index,
+                    run_start + index + word.len(),
                     Style {
                         class: Some(MISSPELLED.into()),
                         underline: Some(true),
@@ -273,9 +266,37 @@ impl Speller {
                     },
                 ));
             }
-            offset += size;
         }
     }
+}
+
+/// A textblock's prose, as runs of adjacent text with the document position
+/// each starts at.
+///
+/// A run is text nodes side by side, whatever their marks — `hel` and a bold
+/// `lo` are one word to the reader and to the dictionary. It ends at anything
+/// that is not text (a line break, an image), because that is a position in
+/// the document and not a character of it, and at inline code, because code is
+/// not prose. `start` is where the block's content begins.
+fn prose_runs(block: &Node, start: usize) -> Vec<(usize, String)> {
+    let mut runs = Vec::new();
+    let mut current: Option<(usize, String)> = None;
+    let mut offset = start;
+    for child in block.content() {
+        let prose = child
+            .text()
+            .filter(|_| !child.marks().iter().any(|mark| mark.typ().spec().code));
+        match prose {
+            Some(text) => current
+                .get_or_insert_with(|| (offset, String::new()))
+                .1
+                .push_str(text),
+            None => runs.extend(current.take()),
+        }
+        offset += child.node_size();
+    }
+    runs.extend(current);
+    runs
 }
 
 /// Whether a word is the kind of thing a dictionary has an opinion about.

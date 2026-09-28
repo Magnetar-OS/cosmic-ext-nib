@@ -167,3 +167,38 @@ fn a_machine_with_no_dictionaries_says_so_rather_than_failing() {
     // And the list of what is installed is always answerable.
     let _ = Speller::installed();
 }
+
+#[test]
+fn the_word_under_the_pointer_is_found_after_a_line_break() {
+    // A composer turns every line of a reply into a hard break, so this is the
+    // ordinary case. The break is a position in the document and not a
+    // character of the text; counting it as neither put the range one short
+    // and handed a correction the wrong text to replace.
+    let b = b();
+    let doc = b.doc(nodes![b.node(
+        nodes::PARAGRAPH,
+        nodes![
+            b.text("hello"),
+            b.node(nodes::HARD_BREAK, nodes![]),
+            b.text("wrold")
+        ]
+    )]);
+    let speller = speller();
+    assert_eq!(misspellings(&speller, &doc), [(7, 12)]);
+    assert_eq!(
+        speller.word_at(&doc, 10),
+        Some(("wrold".to_owned(), 7, 12)),
+        "the range decorate marked is the range word_at offers to replace"
+    );
+    assert!(speller.word_at(&doc, 3).is_none(), "\"hello\" is a word");
+}
+
+#[test]
+fn a_word_split_by_formatting_is_still_one_word() {
+    // "hel**lo**" is one word to the reader, and to the dictionary.
+    let b = b();
+    let mut content = nodes![b.text("hel")];
+    content.extend(b.mark("strong", None, nodes![b.text("lo")]));
+    let doc = b.doc(nodes![b.node(nodes::PARAGRAPH, content)]);
+    assert!(misspellings(&speller(), &doc).is_empty());
+}
