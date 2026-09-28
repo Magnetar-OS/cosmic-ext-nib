@@ -391,6 +391,43 @@ fn a_change_marked_out_of_history_is_not_undone_but_is_followed() {
     assert_eq!(undone.doc().to_string(), r#"doc(paragraph("hello["))"#);
 }
 
+#[test]
+fn undo_follows_a_change_made_outside_the_history_before_its_own() {
+    // The case the test above cannot tell apart from a wrong answer: the
+    // outside change lands *before* ours, so every position the history holds
+    // has moved. Mapping through it backwards deleted the "o" of "hello".
+    let state = state_at(one_paragraph("hello"), 6);
+    let mut tr = state.tr().at(1000);
+    tr.insert_text("!").unwrap();
+    let state = state.applied(tr);
+    let mut tr = state.tr().at(5000);
+    tr.insert_text("?").unwrap();
+    let state = state.applied(tr);
+
+    let mut remote = state.tr().at(5100);
+    remote.set_selection(Selection::cursor(1));
+    remote.insert_text("[").unwrap();
+    let state = state.applied(remote.set_meta(history::ADD_TO_HISTORY, false));
+    assert_eq!(state.doc().to_string(), r#"doc(paragraph("[hello!?"))"#);
+
+    let once = run(&state, &cmd::undo());
+    assert_eq!(once.doc().to_string(), r#"doc(paragraph("[hello!"))"#);
+    assert_eq!(
+        once.selection().cursor_pos(),
+        Some(8),
+        "where \"?\" was typed"
+    );
+
+    // The second undo needs the outside change too, although the event that
+    // sat between them is gone.
+    let twice = run(&once, &cmd::undo());
+    assert_eq!(twice.doc().to_string(), r#"doc(paragraph("[hello"))"#);
+    assert_eq!(twice.selection().cursor_pos(), Some(7));
+
+    let redone = run(&run(&twice, &cmd::redo()), &cmd::redo());
+    assert_eq!(redone.doc().to_string(), r#"doc(paragraph("[hello!?"))"#);
+}
+
 // ---------------------------------------------------------------------------
 // The keymap
 // ---------------------------------------------------------------------------

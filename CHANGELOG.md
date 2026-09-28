@@ -19,3 +19,4 @@ releases before 1.1.1 are described by their git tags.
 - A blockquote of several paragraphs stays one quote through Markdown export.
 - A list inside a quote keeps its markers in order (`> - one`) in Markdown and plain-text output.
 - Plain-text parsing keeps the `-- ` signature separator, so a draft reopened and written out again still carries it.
+- Undo after a change made outside the history, before the history's own changes, takes back the right text and restores the right selection.

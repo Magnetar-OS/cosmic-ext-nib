@@ -84,9 +84,26 @@ struct Item {
     step: Option<Step>,
     /// `Some` marks the start of an undo event.
     selection: Option<Selection>,
+    /// How many entries back sits the entry whose map this one inverts.
+    ///
+    /// Set on the maps an undo leaves behind when it had to remap its steps
+    /// through changes the history did not make. Pairing them lets a later
+    /// remap put a position the undo deleted and the redo restored back where
+    /// it was, rather than at the edge of the hole.
+    mirror_offset: Option<usize>,
 }
 
 impl Item {
+    /// An entry that only records how positions moved.
+    fn map_only(map: StepMap, mirror_offset: Option<usize>) -> Self {
+        Self {
+            map,
+            step: None,
+            selection: None,
+            mirror_offset,
+        }
+    }
+
     /// Combines this entry with one that follows it, when the two are a
     /// continuation of the same edit.
     fn merge(&self, next: &Self) -> Option<Self> {
@@ -102,9 +119,14 @@ impl Item {
             map: merged.step_map().invert(),
             step: Some(merged),
             selection: self.selection.clone(),
+            mirror_offset: None,
         })
     }
 }
+
+/// The selection an event started from, and the mapping that carries it into
+/// the document its undo produces.
+type Restore = (Selection, Mapping);
 
 /// One direction of the history.
 #[derive(Debug, Clone, Default)]
@@ -130,6 +152,7 @@ impl Branch {
                 map: tr.mapping().maps()[i].clone(),
                 step: Some(step.invert(&tr.docs()[i])),
                 selection: selection.take(),
+                mirror_offset: None,
             };
             let starts_event = item.selection.is_some();
             match items.last().and_then(|last| last.merge(&item)) {
@@ -156,11 +179,7 @@ impl Branch {
             return self.clone();
         }
         let mut items = self.items.clone();
-        items.extend(maps.iter().map(|map| Item {
-            map: map.clone(),
-            step: None,
-            selection: None,
-        }));
+        items.extend(maps.iter().map(|map| Item::map_only(map.clone(), None)));
         Self {
             items,
             event_count: self.event_count,
@@ -188,56 +207,102 @@ impl Branch {
         self.event_count -= excess;
     }
 
+    /// The forward maps of the entries in `from..to`, in the order they
+    /// happened, with the mirror pairs the entries record.
+    fn remapping(&self, from: usize, to: usize) -> Mapping {
+        let mut maps = Mapping::new();
+        for (i, item) in self.items.iter().enumerate().take(to).skip(from) {
+            let mirror = item
+                .mirror_offset
+                .filter(|offset| i >= from + offset)
+                .map(|offset| maps.len() - offset);
+            maps.append_map(item.map.clone(), mirror);
+        }
+        maps
+    }
+
     /// Takes the most recent event off, as a transaction that undoes it.
     ///
     /// Returns the remaining branch, the transaction, and the selection the
-    /// event started from.
-    fn pop_event(&self, state: &EditorState) -> Option<(Self, Transaction, Option<Selection>)> {
+    /// event started from with the mapping that carries it into the
+    /// transaction's document.
+    ///
+    /// # Changes the history did not make
+    ///
+    /// While nothing outside the history has touched the document since the
+    /// event, its inverted steps apply as they are. Once something has, each
+    /// step still to be undone is mapped forward through everything that
+    /// happened after it — the outside changes and this event's own later
+    /// steps — and then back through the undo steps already taken, each paired
+    /// with the step it undoes. The maps the undo leaves behind go back on the
+    /// branch, so the events older than this one can make the same journey
+    /// next time.
+    fn pop_event(&self, state: &EditorState) -> Option<(Self, Transaction, Option<Restore>)> {
         if self.is_empty() {
             return None;
         }
-        let mut tr = state.tr();
-        let mut selection = None;
-        let mut cut = 0;
-        // Steps not in the history sit between ours and have to be mapped
-        // through; `remap` accumulates them as we walk back.
-        let mut remap = Mapping::new();
-        let mut remapping = false;
+        // Where the newest event starts.
+        let end = self
+            .items
+            .iter()
+            .rposition(|item| item.selection.is_some())?;
 
-        for i in (0..self.items.len()).rev() {
+        let mut tr = state.tr();
+        let mut remap: Option<Mapping> = None;
+        // How far into `remap` the maps start that the current entry has not
+        // yet been carried through.
+        let mut map_from = 0;
+        let mut add_before: Vec<Item> = Vec::new();
+        let mut add_after: Vec<Item> = Vec::new();
+        let mut selection = None;
+
+        for i in (end..self.items.len()).rev() {
             let item = &self.items[i];
-            match &item.step {
-                None => {
-                    remap.append_map(item.map.invert(), None);
-                    remapping = true;
+            let Some(step) = &item.step else {
+                if remap.is_none() {
+                    let fresh = self.remapping(end, i + 1);
+                    map_from = fresh.len();
+                    remap = Some(fresh);
                 }
-                Some(step) => {
-                    let step = if remapping {
-                        if let Some(mapped) = step.map(&remap) {
-                            mapped
-                        } else {
-                            if item.selection.is_some() {
-                                selection.clone_from(&item.selection);
-                                cut = i;
-                                break;
-                            }
-                            continue;
-                        }
-                    } else {
-                        step.clone()
-                    };
-                    let _ = tr.step(step);
+                map_from -= 1;
+                add_before.push(item.clone());
+                continue;
+            };
+            if let Some(remap) = remap.as_mut() {
+                add_before.push(Item::map_only(item.map.clone(), None));
+                let mapped = step.map(&remap.slice(map_from, remap.len()));
+                let applied = mapped.and_then(|mapped| {
+                    tr.step(mapped)
+                        .ok()
+                        .map(|tr| tr.mapping().maps().last().cloned())
+                });
+                map_from -= 1;
+                if let Some(Some(map)) = applied {
+                    add_after.push(Item::map_only(
+                        map.clone(),
+                        Some(add_after.len() + add_before.len()),
+                    ));
+                    remap.append_map(map, Some(map_from));
                 }
+            } else {
+                // Nothing outside the history has happened since this step, so
+                // its inverse was computed against this very document.
+                let _ = tr.step(step.clone());
             }
-            if item.selection.is_some() {
-                selection.clone_from(&item.selection);
-                cut = i;
+            if let Some(start) = &item.selection {
+                let carried = remap
+                    .as_ref()
+                    .map_or_else(Mapping::new, |remap| remap.slice(map_from, remap.len()));
+                selection = Some((start.clone(), carried));
                 break;
             }
         }
 
+        let mut items = self.items[..end].to_vec();
+        items.extend(add_before.into_iter().rev());
+        items.extend(add_after);
         let remaining = Self {
-            items: self.items[..cut].to_vec(),
+            items,
             event_count: self.event_count - 1,
         };
         Some((remaining, tr, selection))
@@ -433,9 +498,9 @@ fn step_history(state: &EditorState, direction: Direction) -> Option<Transaction
         Direction::Redo => (added, remaining),
     };
 
-    if let Some(selection) = selection {
+    if let Some((selection, mapping)) = selection {
         let doc = tr.doc().clone();
-        let mapped = selection.map(&doc, &Mapping::new());
+        let mapped = selection.map(&doc, &mapping);
         tr.set_selection(mapped);
     }
     let new_history = History {
