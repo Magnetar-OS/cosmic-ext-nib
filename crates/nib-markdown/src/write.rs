@@ -252,8 +252,12 @@ impl Writer<'_> {
             if let Some(link) = link {
                 out.push('[');
                 self.inline_node(child, &mut out);
-                let href = link.attrs().get_str("href").unwrap_or("");
-                let _ = write!(out, "]({href})");
+                out.push(']');
+                target(
+                    link.attrs().get_str("href").unwrap_or(""),
+                    link.attrs().get_str("title"),
+                    &mut out,
+                );
             } else {
                 self.inline_node(child, &mut out);
             }
@@ -292,9 +296,14 @@ impl Writer<'_> {
         match node.type_name() {
             nodes::HARD_BREAK => out.push_str("  \n"),
             nodes::IMAGE => {
-                let src = node.attrs().get_str("src").unwrap_or("");
-                let alt = node.attrs().get_str("alt").unwrap_or("");
-                let _ = write!(out, "![{alt}]({src})");
+                out.push_str("![");
+                escape(node.attrs().get_str("alt").unwrap_or(""), out);
+                out.push(']');
+                target(
+                    node.attrs().get_str("src").unwrap_or(""),
+                    node.attrs().get_str("title"),
+                    out,
+                );
             }
             name if name == COMPONENT_INLINE => {
                 let component = node.attrs().get_str(NAME).unwrap_or("component");
@@ -318,7 +327,7 @@ fn delimiter(name: &str) -> Option<&'static str> {
         marks::STRONG => Some("**"),
         marks::EM => Some("*"),
         marks::STRIKETHROUGH => Some("~~"),
-        // Inline code is written whole by `code_span`.
+        // Inline code is written whole by `code_span`; a link by `target`.
         _ => None,
     }
 }
@@ -338,6 +347,37 @@ fn code_span(text: &str, out: &mut String) {
         || (text.starts_with(' ') && text.ends_with(' ') && !text.trim().is_empty());
     let pad = if pad { " " } else { "" };
     let _ = write!(out, "{fence}{pad}{text}{pad}{fence}");
+}
+
+/// A link or image target, with its title, in parentheses.
+///
+/// A destination with a space or a parenthesis in it goes in angle brackets,
+/// where neither ends it; a title is quoted with its quotes escaped.
+fn target(href: &str, title: Option<&str>, out: &mut String) {
+    out.push('(');
+    if href.is_empty() || href.contains([' ', '(', ')', '<', '>', '\\']) {
+        out.push('<');
+        for ch in href.chars() {
+            if matches!(ch, '<' | '>' | '\\') {
+                out.push('\\');
+            }
+            out.push(ch);
+        }
+        out.push('>');
+    } else {
+        out.push_str(href);
+    }
+    if let Some(title) = title.filter(|t| !t.is_empty()) {
+        out.push_str(" \"");
+        for ch in title.chars() {
+            if matches!(ch, '"' | '\\') {
+                out.push('\\');
+            }
+            out.push(ch);
+        }
+        out.push('"');
+    }
+    out.push(')');
 }
 
 /// A component's props, in the dialect's spelling.

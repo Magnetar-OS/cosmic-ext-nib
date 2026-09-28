@@ -238,6 +238,21 @@ fn code_that_contains_its_own_delimiters_survives() {
 }
 
 #[test]
+fn link_and_image_targets_and_titles_survive() {
+    let md = gfm();
+    for input in [
+        "[a](http://x.test \"The title\")\n",
+        "[a](<http://x.test/a b>)\n",
+        "[a](http://x.test/\\(b)\n",
+        "[a](http://x.test \"say \\\"hi\\\"\")\n",
+        "![a](x.png \"T\")\n",
+        "![a \\] b](x.png)\n",
+    ] {
+        survives(&md, input);
+    }
+}
+
+#[test]
 fn a_code_block_is_not_read_as_a_component_or_a_module_line() {
     let mdx = components(Dialect::Mdx);
     let doc = mdx.parse("```js\nimport x from 'y'\n```\n");
