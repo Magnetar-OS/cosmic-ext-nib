@@ -555,9 +555,12 @@ fn walk(ctx: &mut Ctx<'_>, dialect: Dialect, source: &str) {
                 Tag::Emphasis => ctx.add_mark(marks::EM, None),
                 Tag::Strong => ctx.add_mark(marks::STRONG, None),
                 Tag::Strikethrough => ctx.add_mark(marks::STRIKETHROUGH, None),
+                // A target the reader should not be sent to leaves the text
+                // and drops the link, as it does in HTML: a downloaded file is
+                // no more trusted than a mail.
                 Tag::Link {
                     dest_url, title, ..
-                } => {
+                } if nib_model::link::is_followable(&dest_url) => {
                     let mut attrs = Attrs::none().set("href", dest_url.as_ref());
                     if !title.is_empty() {
                         attrs = attrs.set("title", title.as_ref());

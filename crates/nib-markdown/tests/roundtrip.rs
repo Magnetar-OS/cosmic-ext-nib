@@ -304,3 +304,30 @@ fn a_code_block_is_not_read_as_a_component_or_a_module_line() {
         r#"doc(component_block[name=card](code_block("::\n")))"#
     );
 }
+
+#[test]
+fn a_link_that_would_run_script_or_open_a_local_file_keeps_its_text_not_its_target() {
+    // A downloaded file is no more trusted than a mail, and a link's target is
+    // handed to the desktop's URL opener when it is clicked.
+    let md = gfm();
+    for input in [
+        "[x](javascript:alert(1))\n",
+        "[x](<java\tscript:alert(1)>)\n",
+        "[x](file:///home/user/.bashrc)\n",
+        "[x](smb://attacker.example/share)\n",
+        "[x](data:text/html,hi)\n",
+    ] {
+        assert_eq!(
+            md.parse(input).to_string(),
+            r#"doc(paragraph("x"))"#,
+            "{input:?} kept its target"
+        );
+    }
+    for input in [
+        "[x](https://example.test/)\n",
+        "[x](mailto:ada@example.test)\n",
+        "[x](#section)\n",
+    ] {
+        assert_eq!(round(&md, input), input, "{input:?} was dropped");
+    }
+}
