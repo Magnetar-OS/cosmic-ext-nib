@@ -18,9 +18,10 @@ structure, and data structures port.
   │                           selection, input, clipboard, decorations
   ├─ nib-html ─────────────── HTML in and out (html5ever)
   ├─ nib-css ──────────────── the safe subset of CSS, as marks
-  ├─ nib-css ──────────────── the safe subset of CSS, as marks
   ├─ nib-markdown ─────────── Markdown in and out
   ├─ nib-text ─────────────── plain text out, mail quoting in
+  ├─ nib-spell ────────────── spellchecking against the system's dictionaries
+  ├─ nib-highlight ────────── syntax highlighting for code blocks
   └─ nib-model ───────────── the document: schema, positions, steps,
                               transactions. No toolkit. No pixels.
 ```
@@ -96,7 +97,7 @@ opaque island. The two meet at the HTML serialiser, not in the layout engine.
 
 ## State
 
-All the crates are written and tested, at 394 tests with no warnings under
+All the crates are written and tested, at 411 tests with no warnings under
 pedantic clippy.
 
 **`nib-model`** — schema and content-expression compiler, the node tree, marks,
@@ -110,17 +111,6 @@ mode, a half-typed count or a pending operator, so this does, and it sits in
 front of the keymap rather than replacing it.
 
 **`nib-html`** — html5ever in, tags out, one rule table serving both. Authored
-styling — `style=`, and the `bgcolor`/`<font>` attributes that predate it —
-becomes marks on the text it applies to, read off every element rather than a
-list of tags, so a colour on a `<div>` reaches the text inside it.
-
-**`nib-css`** — the subset of CSS a document can carry. Not a sanitiser: a
-declaration either maps onto a colour, a weight, a size or an alignment, or it
-does not exist downstream. Three things are refused on purpose — anything that
-fetches (`url()`, any `@` rule), anything that positions (text that can be
-moved over other text can be hidden under it), and anything that hides
-(`display: none`, a transparent `opacity`, a zero `font-size`), which is
-*reported* rather than obeyed. Authored
 styling — `style=`, and the `bgcolor`/`<font>` attributes that predate it —
 becomes marks on the text it applies to, read off every element rather than a
 list of tags, so a colour on a `<div>` reaches the text inside it.
@@ -159,14 +149,6 @@ document is refused at the one place they all pass through. A click on a link
 in a reader, or a Ctrl+click in an editor, reports its target as
 `Action::Link`; a press that becomes a drag selects instead. Only targets the
 shared link policy (`nib_model::link`) accepts are reported.
-
-**Colour cannot hide text.** A sender’s colour is checked against the pixels
-it will actually land on, at the point of drawing, and replaced with the
-reader’s own when the contrast falls below 3:1. That closes white-on-white by
-construction rather than by detection: there is no list of suspicious colours
-to keep current, and no way to phrase one that evades the check, because the
-check is on the composited result rather than on the spelling. Transparency
-resolves before the ratio is taken, so it is not a way around it either.
 
 **Colour cannot hide text.** A sender’s colour is checked against the pixels
 it will actually land on, at the point of drawing, and replaced with the
