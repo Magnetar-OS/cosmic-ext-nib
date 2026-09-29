@@ -27,3 +27,4 @@ releases before 1.1.1 are described by their git tags.
 - Spellcheck: `word_at` gives the right range after a line break or other inline atom, and a word split by formatting is checked as one word.
 - Links read from Markdown follow the same scheme policy as HTML: `javascript:`, `file:`, `data:` and other unlisted schemes lose the link and keep the text.
 - The widget reports link clicks as `Action::Link`, which it never emitted, so links in readers did nothing. A click follows a link in a read-only editor and Ctrl+click does in an editable one; a press that becomes a drag selects instead. The pointer turns to a hand over a link a click would follow.
+- Markdown nested deeper than 256 levels — fifty thousand `>` on a line — no longer overflows the stack and aborts the process. Deeper containers are read as transparent and their text is kept.

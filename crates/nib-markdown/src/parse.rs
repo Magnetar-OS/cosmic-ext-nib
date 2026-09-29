@@ -27,19 +27,37 @@ use pulldown_cmark::{Alignment, CodeBlockKind, Event, HeadingLevel, Options, Par
 use crate::Dialect;
 use crate::components::{COMPONENT_BLOCK, COMPONENT_INLINE, ESM, NAME, SOURCE};
 
+/// How many nodes deep a parsed document may nest before further containers
+/// are read as transparent, their content kept in the one they sit in.
+///
+/// Markdown sets no limit of its own — a line of fifty thousand `>` is fifty
+/// thousand nested quotes — and everything that walks a document afterwards
+/// recurses once per level, dropping it included. A stack overflow is not a
+/// panic: it aborts the process. Real documents nest a handful deep; past
+/// this, structure stops and the text keeps coming.
+const MAX_DEPTH: usize = 256;
+
 /// Parses Markdown into a document.
 #[must_use]
 pub fn parse(schema: &Schema, dialect: Dialect, text: &str) -> Node {
+    parse_at(schema, dialect, text, 0)
+}
+
+/// [`parse`], for a component's body `depth` components down.
+fn parse_at(schema: &Schema, dialect: Dialect, text: &str, depth: usize) -> Node {
     let mut ctx = Ctx::new(schema);
     for segment in split(dialect, text) {
         match segment {
             Segment::Markdown(source) => walk(&mut ctx, dialect, &source),
             Segment::Component { name, props, body } => {
-                let Some(typ) = schema.node_id(COMPONENT_BLOCK) else {
+                let Some(typ) = schema
+                    .node_id(COMPONENT_BLOCK)
+                    .filter(|_| depth < MAX_DEPTH)
+                else {
                     walk(&mut ctx, dialect, &body);
                     continue;
                 };
-                let inner = parse(schema, dialect, &body);
+                let inner = parse_at(schema, dialect, &body, depth + 1);
                 let attrs = props.set(NAME, name.as_str());
                 if let Ok(node) =
                     schema.create(typ, Some(&attrs), inner.content().clone(), Marks::none())
@@ -629,6 +647,13 @@ fn walk(ctx: &mut Ctx<'_>, dialect: Dialect, source: &str) {
 
 fn open_named(ctx: &mut Ctx<'_>, name: &str, attrs: Attrs) {
     match ctx.schema.node_id(name) {
+        // Past the depth cap a container is transparent: its tag is recorded
+        // so its end event closes only what was opened inside it, and its
+        // content lands in the context already open. A textblock still opens,
+        // since it is one level and holds only inline content.
+        Some(typ) if ctx.stack.len() >= MAX_DEPTH && !ctx.schema.node_type(typ).is_textblock() => {
+            ctx.open_tags.push(ctx.stack.len());
+        }
         Some(typ) => ctx.open_tag(typ, attrs),
         // The schema has no such type: still record the tag, so its end event
         // closes nothing rather than closing something else.

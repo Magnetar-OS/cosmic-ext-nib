@@ -331,3 +331,40 @@ fn a_link_that_would_run_script_or_open_a_local_file_keeps_its_text_not_its_targ
         assert_eq!(round(&md, input), input, "{input:?} was dropped");
     }
 }
+
+#[test]
+fn nesting_deeper_than_any_real_document_neither_overflows_nor_loses_the_text() {
+    // Parsed, written and dropped on a thread with the stack an async
+    // runtime's worker gets. Before the depth cap fifty thousand `>` built a
+    // document fifty thousand quotes deep, and dropping it aborted the
+    // process: a stack overflow is not a panic, so nothing above can catch it.
+    for source in [
+        format!("{}deep\n", ">".repeat(50_000)),
+        format!("{}deep\n", "- ".repeat(20_000)),
+        format!("{}deep\n", "> - ".repeat(20_000)),
+    ] {
+        let (text, written) = std::thread::Builder::new()
+            .stack_size(2 * 1024 * 1024)
+            .spawn(move || {
+                let md = gfm();
+                let doc = md.parse(&source);
+                (doc.text_content(), md.to_markdown(&doc))
+            })
+            .expect("a thread")
+            .join()
+            .expect("the parse finished");
+        assert_eq!(text, "deep");
+        assert!(written.trim_end().ends_with("deep"), "{written:?}");
+    }
+}
+
+#[test]
+fn nesting_within_the_depth_cap_keeps_its_structure() {
+    let md = gfm();
+    let input = "> > > - a\n";
+    let deep = format!("{}x\n", "> ".repeat(100));
+    for input in [input, deep.as_str()] {
+        survives(&md, input);
+    }
+    assert_eq!(round(&md, &deep), deep);
+}
