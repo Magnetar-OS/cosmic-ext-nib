@@ -97,11 +97,20 @@ impl<'a> Ctx<'a> {
         self.stack.last().is_some_and(|o| o.preserve)
     }
 
-    /// Whether the innermost open node's schema permits this mark type.
+    /// Whether text arriving now may carry this mark type.
+    ///
+    /// Asked of the innermost node only when it holds inline content itself —
+    /// a code block refuses marks, and that is what makes `<pre><code>` one
+    /// code block. A block container (the document, a list item, a quote)
+    /// holds no marks of its own, but the text will land in the paragraph
+    /// placement opens inside it, so its refusal is not the one that counts:
+    /// asking it lost `<b>` from every fragment written without a `<p>`,
+    /// which is how browsers put a selection on the clipboard.
     fn allows_mark(&self, mark: nib_model::schema::MarkTypeId) -> bool {
-        self.stack
-            .last()
-            .is_some_and(|o| self.rules.schema().node_type(o.typ).allows_mark_type(mark))
+        self.stack.last().is_some_and(|o| {
+            let typ = self.rules.schema().node_type(o.typ);
+            !typ.is_inline_content() || typ.allows_mark_type(mark)
+        })
     }
 
     /// Opens a node context.

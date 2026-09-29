@@ -29,3 +29,4 @@ releases before 1.1.1 are described by their git tags.
 - The widget reports link clicks as `Action::Link`, which it never emitted, so links in readers did nothing. A click follows a link in a read-only editor and Ctrl+click does in an editable one; a press that becomes a drag selects instead. The pointer turns to a hand over a link a click would follow.
 - Markdown nested deeper than 256 levels — fifty thousand `>` on a line — no longer overflows the stack and aborts the process. Deeper containers are read as transparent and their text is kept.
 - Markdown: bold, italics, code spans and links in a tight list item (the usual kind) were dropped when the file was read; they are kept.
+- HTML: inline markup outside a paragraph — `<b>x</b>` on its own, `<li><em>x</em></li>`, a browser's clipboard fragment — kept its text but lost its marks; it keeps both.

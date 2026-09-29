@@ -475,3 +475,29 @@ fn a_script_below_the_depth_cap_is_still_dropped() {
         .expect("the parse finished");
     assert_eq!(text, "kept");
 }
+
+#[test]
+fn inline_markup_outside_a_paragraph_keeps_its_marks() {
+    // A browser puts a selection on the clipboard as bare inline HTML, and
+    // mail writes list items without paragraphs; the paragraph is implicit,
+    // and the marks belong to the text inside it.
+    for (input, expected) in [
+        ("<b>x</b>", r#"doc(paragraph(strong("x")))"#),
+        ("<em>x</em> y", r#"doc(paragraph(em("x"), " y"))"#),
+        (
+            "<ul><li><b>x</b></li></ul>",
+            r#"doc(bullet_list(list_item(paragraph(strong("x")))))"#,
+        ),
+        (
+            "<blockquote><i>q</i></blockquote>",
+            r#"doc(blockquote(paragraph(em("q"))))"#,
+        ),
+    ] {
+        assert_eq!(html().parse(input).to_string(), expected, "{input}");
+    }
+    // A code block still holds no marks.
+    assert_eq!(
+        html().parse("<pre><code><b>x</b></code></pre>").to_string(),
+        r#"doc(code_block("x"))"#
+    );
+}
