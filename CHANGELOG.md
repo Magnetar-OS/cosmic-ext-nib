@@ -30,3 +30,4 @@ releases before 1.1.1 are described by their git tags.
 - Markdown nested deeper than 256 levels — fifty thousand `>` on a line — no longer overflows the stack and aborts the process. Deeper containers are read as transparent and their text is kept.
 - Markdown: bold, italics, code spans and links in a tight list item (the usual kind) were dropped when the file was read; they are kept.
 - HTML: inline markup outside a paragraph — `<b>x</b>` on its own, `<li><em>x</em></li>`, a browser's clipboard fragment — kept its text but lost its marks; it keeps both.
+- HTML: blocks the parser nested inside an unclosed `<pre>` could give a document the schema forbids (a list item inside a list item, an image directly in a quote), and ordinary paragraphs there kept their raw whitespace. Placement is checked again after every close, and only code keeps whitespace as written. Two runs of text no longer meet with a doubled space.

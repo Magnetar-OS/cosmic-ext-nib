@@ -114,9 +114,16 @@ impl<'a> Ctx<'a> {
     }
 
     /// Opens a node context.
+    ///
+    /// Whitespace is kept as written only in a node whose own type says so,
+    /// not in everything the DOM nested under one: a `<blockquote>` inside a
+    /// `<pre>` becomes a quote beside the code block, and its paragraphs are
+    /// ordinary paragraphs, which HTML reads with their whitespace collapsed.
+    /// Keeping it raw there gave text that could not be written out and read
+    /// back the same.
     fn open(&mut self, typ: NodeTypeId, attrs: Attrs) {
         let t = self.rules.schema().node_type(typ);
-        let preserve = self.preserving() || t.spec().whitespace == Whitespace::Pre;
+        let preserve = t.spec().whitespace == Whitespace::Pre;
         self.stack.push(Open {
             typ,
             attrs,
@@ -164,41 +171,48 @@ impl<'a> Ctx<'a> {
         let schema = self.rules.schema().clone();
         let typ = node.type_id();
 
-        for depth in (0..self.stack.len()).rev() {
-            if let Some(wrapping) = self.stack[depth].matched.find_wrapping(&schema, typ) {
-                self.close_to(depth);
-                for wrapper in wrapping {
-                    self.open(wrapper, Attrs::none());
-                }
-                self.push(node);
-                return true;
-            }
-            // Something may be required before it — a paragraph before a
-            // nested list inside a list item.
-            if let Some(fill) = self.stack[depth].matched.fill_before(
-                &schema,
-                &Fragment::from(node.clone()),
-                false,
-                0,
-            ) && !fill.is_empty()
-            {
-                self.close_to(depth);
-                for filler in &fill {
-                    self.push(filler.clone());
-                }
-                if let Some(wrapping) = self.stack[depth].matched.find_wrapping(&schema, typ) {
-                    for wrapper in wrapping {
-                        self.open(wrapper, Attrs::none());
+        // Closing what is in the way places each closed node in turn, and
+        // placing one can close further out than the depth chosen here — past
+        // it, even. So whenever anything was closed the choice is made again
+        // against the stack as it now is; pushing into whatever happened to be
+        // innermost afterwards is how a list item came to sit inside a list
+        // item. Each retry follows a close, so the stack shrinks and this ends.
+        'place: loop {
+            for depth in (0..self.stack.len()).rev() {
+                let matched = &self.stack[depth].matched;
+                let fits = matched.find_wrapping(&schema, typ).is_some();
+                // Something may be required before it — a paragraph before a
+                // nested list inside a list item.
+                let fill = if fits {
+                    None
+                } else {
+                    matched
+                        .fill_before(&schema, &Fragment::from(node.clone()), false, 0)
+                        .filter(|fill| !fill.is_empty())
+                };
+                if fits || fill.is_some() {
+                    let before = self.stack.len();
+                    self.close_to(depth);
+                    if self.stack.len() != before {
+                        continue 'place;
                     }
-                    self.push(node);
-                    return true;
+                    for filler in fill.iter().flat_map(Fragment::iter) {
+                        self.push(filler.clone());
+                    }
+                    if let Some(wrapping) = self.stack[depth].matched.find_wrapping(&schema, typ) {
+                        for wrapper in wrapping {
+                            self.open(wrapper, Attrs::none());
+                        }
+                        self.push(node);
+                        return true;
+                    }
+                }
+                if self.stack[depth].solid {
+                    break;
                 }
             }
-            if self.stack[depth].solid {
-                break;
-            }
+            return false;
         }
-        false
     }
 
     /// Appends to the innermost context, advancing its match.
@@ -253,7 +267,11 @@ impl<'a> Ctx<'a> {
             }
             let leading = raw.starts_with(char::is_whitespace);
             let mut out = String::new();
-            if (leading || self.pending_space) && self.has_inline_content() {
+            // One space between two runs, however many either side had.
+            if (leading || self.pending_space)
+                && self.has_inline_content()
+                && !self.ends_with_space()
+            {
                 out.push(' ');
             }
             out.push_str(&collapsed);
@@ -279,6 +297,16 @@ impl<'a> Ctx<'a> {
             .last()
             .and_then(|o| o.content.last())
             .is_some_and(Node::is_inline)
+    }
+
+    /// True when the innermost context's last inline content ends in a space,
+    /// so another would double it.
+    fn ends_with_space(&self) -> bool {
+        self.stack
+            .last()
+            .and_then(|o| o.content.last())
+            .and_then(Node::text)
+            .is_some_and(|text| text.ends_with(' '))
     }
 
     fn finish(mut self) -> Node {

@@ -501,3 +501,30 @@ fn inline_markup_outside_a_paragraph_keeps_its_marks() {
         r#"doc(code_block("x"))"#
     );
 }
+
+// ---------------------------------------------------------------------------
+// Found by the generated round trips (tests/generated.rs)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn blocks_the_html_parser_nested_in_a_pre_parse_valid_and_stable() {
+    for input in [
+        "<pre><blockquote> two  words </blockquote></pre>",
+        "<pre><ul><li> a\tb </li></ul>",
+        "<div>\n two words </tr><span></div><li><ul></th><pre></li></b><li>&lt;b&gt;",
+        "<blockquote><h1><pre></u> x <a href=\"https://x.test\"><img src=\"x.png\" alt=\"a\"></blockquote>",
+    ] {
+        let doc = html().parse(input);
+        assert_eq!(doc.check(), Ok(()), "{input}: {doc}");
+        let again = html().parse(&html().to_html(&doc));
+        assert_eq!(again, doc, "{input}");
+    }
+}
+
+#[test]
+fn two_runs_meet_with_one_space_between_them() {
+    assert_eq!(
+        html().parse("<p><code>a </code><i> b</i></p>").to_string(),
+        r#"doc(paragraph(code("a "), em("b")))"#
+    );
+}
