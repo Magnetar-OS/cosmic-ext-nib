@@ -1762,14 +1762,20 @@ impl<Message> Editor<'_, Message> {
             return false;
         }
         let slice = selection.content(state.doc());
-        clipboard.write(
+        let text = plain_text(&state, &slice);
+        #[cfg(feature = "clipboard")]
+        clipboard.write_data(
             cosmic::iced::advanced::clipboard::Kind::Standard,
-            plain_text(&state, &slice),
+            cosmic::iced::clipboard::mime::ClipboardStoreData(Box::new(Copied {
+                html: nib_html::Html::new(state.schema()).slice_to_html(&slice),
+                text,
+            })),
         );
-        // The structured slice is kept alongside. The system clipboard carries
-        // text and nothing else — iced exposes no rich flavour — so a paste
-        // into another application arrives as text, and a paste back into this
-        // one keeps its headings.
+        #[cfg(not(feature = "clipboard"))]
+        clipboard.write(cosmic::iced::advanced::clipboard::Kind::Standard, text);
+        // The structured slice is kept as well: a paste back into this
+        // application keeps exactly what was copied, which a round trip
+        // through HTML would only approximate.
         internal.clipboard = Some(slice);
         true
     }
@@ -1803,6 +1809,10 @@ impl<Message> Editor<'_, Message> {
             // still holds what it was copied from; otherwise something else
             // was copied since.
             (Some(slice), Some(text)) if plain_text(&state, slice) == text => slice.clone(),
+            // Another application's HTML keeps its structure, read through the
+            // same parser — and the same schema allow-list — as mail.
+            #[cfg(feature = "clipboard")]
+            _ if let Some(slice) = html_on_clipboard(&state, clipboard) => slice,
             (_, Some(text)) => parse_plain(&state, text),
             (_, None) => return false,
         };
@@ -2037,6 +2047,78 @@ pub fn parse_plain(state: &EditorState, text: &str) -> Slice {
         1 => Slice::new(blocks[0].content().clone(), 0, 0),
         _ => Slice::new(nib_model::fragment::Fragment::from_vec(blocks), 1, 1),
     }
+}
+
+/// What a copy offers the system clipboard: the selection as HTML, for an
+/// application that keeps structure, and as text for every other.
+#[cfg(feature = "clipboard")]
+struct Copied {
+    html: String,
+    text: String,
+}
+
+#[cfg(feature = "clipboard")]
+const HTML_MIME: &str = "text/html";
+
+/// The names plain text goes by across the desktop clipboards, as libcosmic's
+/// own text input offers them.
+#[cfg(feature = "clipboard")]
+const TEXT_MIMES: [&str; 6] = [
+    "text/plain;charset=utf-8",
+    "text/plain;charset=UTF-8",
+    "UTF8_STRING",
+    "STRING",
+    "text/plain",
+    "TEXT",
+];
+
+#[cfg(feature = "clipboard")]
+impl cosmic::iced::clipboard::mime::AsMimeTypes for Copied {
+    fn available(&self) -> std::borrow::Cow<'static, [String]> {
+        std::iter::once(HTML_MIME)
+            .chain(TEXT_MIMES)
+            .map(String::from)
+            .collect()
+    }
+
+    fn as_bytes(&self, mime_type: &str) -> Option<std::borrow::Cow<'static, [u8]>> {
+        if mime_type == HTML_MIME {
+            Some(self.html.clone().into_bytes().into())
+        } else if TEXT_MIMES.contains(&mime_type) {
+            Some(self.text.clone().into_bytes().into())
+        } else {
+            None
+        }
+    }
+}
+
+/// The HTML another application put on the clipboard, as a slice to paste.
+///
+/// Browsers are not agreed on an encoding for it: most write UTF-8, and some
+/// UTF-16 behind a byte-order mark, so the mark decides.
+#[cfg(feature = "clipboard")]
+fn html_on_clipboard(state: &EditorState, clipboard: &dyn Clipboard) -> Option<Slice> {
+    let (bytes, _) = clipboard.read_data(
+        cosmic::iced::advanced::clipboard::Kind::Standard,
+        vec![HTML_MIME.to_owned()],
+    )?;
+    let utf16 = |rest: &[u8], unit: fn([u8; 2]) -> u16| {
+        let units: Vec<u16> = rest
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|pair| unit(*pair))
+            .collect();
+        String::from_utf16_lossy(&units)
+    };
+    let html = match bytes.as_slice() {
+        [0xFF, 0xFE, rest @ ..] => utf16(rest, u16::from_le_bytes),
+        [0xFE, 0xFF, rest @ ..] => utf16(rest, u16::from_be_bytes),
+        [0xEF, 0xBB, 0xBF, rest @ ..] => String::from_utf8_lossy(rest).into_owned(),
+        all => String::from_utf8_lossy(all).into_owned(),
+    };
+    let slice = nib_html::Html::new(state.schema()).parse_slice(&html);
+    (!slice.is_empty()).then_some(slice)
 }
 
 /// The selection rectangles for a range within one block.

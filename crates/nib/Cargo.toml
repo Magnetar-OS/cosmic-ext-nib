@@ -23,8 +23,8 @@ nib-model.workspace = true
 # For reading the colour a styling mark carries. The view is where a colour
 # meets the pixels behind it, so it is where legibility is decided.
 nib-css.workspace = true
+# The clipboard's HTML flavour, both ways.
 nib-html = { workspace = true, optional = true }
-nib-text = { workspace = true, optional = true }
 # Unpinned, like every COSMIC application: the consumer's Cargo.lock decides
 # the revision, and because the source URL is the same as theirs, cargo unifies
 # it with the application's own libcosmic rather than building two.
@@ -32,10 +32,11 @@ libcosmic = { git = "https://github.com/pop-os/libcosmic.git" }
 unicode-segmentation.workspace = true
 
 [features]
-# The clipboard carries HTML as well as text, so both serialisers are on by
-# default. An application that only ever pastes plain text can turn them off.
+# A copy offers HTML as well as text, and a paste from another application
+# reads its HTML, so structure survives both ways. On by default; without it
+# the clipboard carries plain text only.
 default = ["clipboard"]
-clipboard = ["dep:nib-html", "dep:nib-text"]
+clipboard = ["dep:nib-html"]
 
 [lints]
 workspace = true

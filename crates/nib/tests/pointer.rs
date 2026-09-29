@@ -1,146 +1,18 @@
 // SPDX-License-Identifier: MPL-2.0
 
-//! The widget under a pointer, driven the way the runtime drives it.
-//!
-//! Each test lays the editor out and feeds `update` the same events a window
-//! would, then reads what the widget published. The renderer is headless: it
-//! draws nothing, but its paragraphs are the real shaped ones, so a hit test
-//! lands on the glyph it would land on in a window.
+//! The widget under a pointer: which clicks follow a link, and which select.
 
-use cosmic::iced::advanced::graphics::text::{Editor as TextEditor, Paragraph, Raw};
-use cosmic::iced::advanced::widget::Tree;
-use cosmic::iced::advanced::{
-    Layout, Shell, Widget, clipboard, image, layout, mouse, renderer, text,
-};
-use cosmic::iced::{
-    Background, Color, Event, Font, Pixels, Point, Rectangle, Size, Transformation, keyboard,
-};
-use nib::{Action, Editor, Style};
+mod common;
+
+use common::{Window, left, modifiers, style};
+use cosmic::iced::advanced::mouse;
+use cosmic::iced::{Event, Point, keyboard};
+use nib::Action;
 use nib_model::basic::{self, marks, nodes};
 use nib_model::build::Builder;
 use nib_model::node::Node;
 use nib_model::state::{EditorState, Selection};
 use nib_model::{attrs, nodes};
-
-/// A renderer that shapes text and draws nothing.
-struct Headless;
-
-impl renderer::Renderer for Headless {
-    fn start_layer(&mut self, _bounds: Rectangle) {}
-    fn end_layer(&mut self) {}
-    fn start_transformation(&mut self, _transformation: Transformation) {}
-    fn end_transformation(&mut self) {}
-    fn reset(&mut self, _new_bounds: Rectangle) {}
-    fn fill_quad(&mut self, _quad: renderer::Quad, _background: impl Into<Background>) {}
-    fn allocate_image(
-        &mut self,
-        _handle: &image::Handle,
-        callback: impl FnOnce(Result<image::Allocation, image::Error>) + Send + 'static,
-    ) {
-        callback(Err(image::Error::Unsupported));
-    }
-}
-
-impl text::Renderer for Headless {
-    type Font = Font;
-    type Paragraph = Paragraph;
-    type Editor = TextEditor;
-    type Raw = Raw;
-
-    const ICON_FONT: Font = Font::DEFAULT;
-    const CHECKMARK_ICON: char = '0';
-    const ARROW_DOWN_ICON: char = '0';
-    const SCROLL_UP_ICON: char = '0';
-    const SCROLL_DOWN_ICON: char = '0';
-    const SCROLL_LEFT_ICON: char = '0';
-    const SCROLL_RIGHT_ICON: char = '0';
-    const ICED_LOGO: char = '0';
-
-    fn default_font(&self) -> Font {
-        Font::DEFAULT
-    }
-    fn default_size(&self) -> Pixels {
-        Pixels(14.0)
-    }
-    fn fill_paragraph(&mut self, _: &Paragraph, _: Point, _: Color, _: Rectangle) {}
-    fn fill_editor(&mut self, _: &TextEditor, _: Point, _: Color, _: Rectangle) {}
-    fn fill_raw(&mut self, _: Raw) {}
-    fn fill_text(&mut self, _: text::Text, _: Point, _: Color, _: Rectangle) {}
-}
-
-type Widgets<'a> = dyn Widget<Action, cosmic::Theme, Headless> + 'a;
-
-/// One editor, laid out at a fixed width, and the events fed to it.
-struct Window<'a> {
-    editor: Editor<'a, Action>,
-    tree: Tree,
-    node: layout::Node,
-}
-
-impl<'a> Window<'a> {
-    fn new(editor: Editor<'a, Action>) -> Self {
-        let mut editor = editor;
-        let mut tree = Tree::new(&editor as &Widgets<'_>);
-        let limits = layout::Limits::new(Size::ZERO, Size::new(400.0, 1_000.0));
-        let node = Widget::<Action, cosmic::Theme, Headless>::layout(
-            &mut editor,
-            &mut tree,
-            &Headless,
-            &limits,
-        );
-        Self { editor, tree, node }
-    }
-
-    /// Delivers one event with the pointer at `at`, and returns what the
-    /// widget published.
-    fn send(&mut self, event: &Event, at: Point) -> Vec<Action> {
-        let mut published = Vec::new();
-        let mut shell = Shell::new(&mut published);
-        let bounds = self.node.bounds();
-        Widget::<Action, cosmic::Theme, Headless>::update(
-            &mut self.editor,
-            &mut self.tree,
-            event,
-            Layout::new(&self.node),
-            mouse::Cursor::Available(at),
-            &Headless,
-            &mut clipboard::Null,
-            &mut shell,
-            &bounds,
-        );
-        published
-    }
-
-    fn click(&mut self, at: Point) -> Vec<Action> {
-        let mut out = self.send(&left(true), at);
-        out.extend(self.send(&left(false), at));
-        out
-    }
-
-    fn pointer_at(&self, at: Point) -> mouse::Interaction {
-        Widget::<Action, cosmic::Theme, Headless>::mouse_interaction(
-            &self.editor,
-            &self.tree,
-            Layout::new(&self.node),
-            mouse::Cursor::Available(at),
-            &self.node.bounds(),
-            &Headless,
-        )
-    }
-}
-
-fn left(pressed: bool) -> Event {
-    let button = mouse::Button::Left;
-    Event::Mouse(if pressed {
-        mouse::Event::ButtonPressed(button)
-    } else {
-        mouse::Event::ButtonReleased(button)
-    })
-}
-
-fn modifiers(held: keyboard::Modifiers) -> Event {
-    Event::Keyboard(keyboard::Event::ModifiersChanged(held))
-}
 
 fn links(actions: &[Action]) -> Vec<String> {
     actions
@@ -150,10 +22,6 @@ fn links(actions: &[Action]) -> Vec<String> {
             _ => None,
         })
         .collect()
-}
-
-fn style() -> Style {
-    Style::from_theme(&cosmic::Theme::default())
 }
 
 /// One paragraph: `go` linked to `href`, then plain text long enough to

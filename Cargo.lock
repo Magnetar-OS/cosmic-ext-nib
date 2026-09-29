@@ -939,7 +939,6 @@ dependencies = [
  "cosmic-ext-nib-css",
  "cosmic-ext-nib-html",
  "cosmic-ext-nib-model",
- "cosmic-ext-nib-text",
  "libcosmic",
  "unicode-segmentation",
 ]

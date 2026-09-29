@@ -9,6 +9,7 @@ releases before 1.1.1 are described by their git tags.
 
 - `nib_model::link::is_followable` and `FOLLOWABLE_SCHEMES`: the one link-target policy the HTML parser, the Markdown parser and the widget share.
 - `nib_html::parse_with_report` (and `Html::parse_with_report`, `styling::read`) returns a `Report` with every attempt to hide text and every refused declaration — the accounting that was computed and then thrown away.
+- The widget's clipboard carries HTML: a copy offers `text/html` beside plain text, so structure survives a paste into another application, and a paste from one reads its HTML through `nib-html`'s allow-list and link policy. The `clipboard` feature no longer pulls in the unused `nib-text`.
 
 ### Changed
 

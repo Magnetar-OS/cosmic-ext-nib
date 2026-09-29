@@ -185,9 +185,12 @@ schema is the allow-list, and nothing in it resolves a URL.
 cargo run --example notebook
 ```
 
-Still to come: the clipboard carries plain text rather than HTML — the
-structured slice is kept alongside, so a paste back into the same application
-keeps its structure, but a paste into another one arrives flat.
+The clipboard carries HTML as well as text. A copy offers both, so a paste
+into another application keeps headings, lists and emphasis; a paste from one
+reads its HTML through `nib-html`, and so through the same schema allow-list
+and link policy as mail. A paste back into the same editor uses the exact slice
+that was copied. Without the default `clipboard` feature, the clipboard is
+plain text only.
 
 ## Building
 
