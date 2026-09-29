@@ -110,8 +110,15 @@ fn list(node: &Node, options: Options, prefix: &str, start: Option<i64>, out: &m
         if let Some(first) = lines.next() {
             // The first line carries the whole prefix, an enclosing quote's
             // `>` included; the marker replaces only the indent at its end.
-            let first = first.strip_prefix(nested.as_str()).unwrap_or(first);
-            let _ = writeln!(out, "{prefix}{marker}{checkbox}{}", first.trim_start());
+            // An empty item's line is the prefix alone, trimmed at its end.
+            let first = first
+                .strip_prefix(nested.as_str())
+                .or_else(|| first.strip_prefix(nested.trim_end()))
+                .unwrap_or(first);
+            // Trimmed at the end too: an empty item is its marker alone, and a
+            // trailing space is a soft break to a flowed-text reader.
+            let line = format!("{prefix}{marker}{checkbox}{}", first.trim_start());
+            let _ = writeln!(out, "{}", line.trim_end());
         }
         for line in lines {
             let _ = writeln!(out, "{line}");

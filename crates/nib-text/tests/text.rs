@@ -304,3 +304,19 @@ fn wrapping_is_optional() {
     );
     assert_eq!(unwrapped.to_text(&doc).lines().count(), 1);
 }
+
+#[test]
+fn an_empty_list_item_inside_a_quote_writes_only_its_marker() {
+    let b = b();
+    let item = |content: Vec<nib_model::node::Node>| {
+        b.node(nodes::LIST_ITEM, nodes![b.node(nodes::PARAGRAPH, content)])
+    };
+    let doc = b.doc(nodes![b.node(
+        nodes::BLOCKQUOTE,
+        nodes![b.node(
+            nodes::BULLET_LIST,
+            nodes![item(nodes![]), item(nodes![b.text("b")])]
+        )]
+    )]);
+    assert_eq!(text().to_text(&doc), "> -\n> - b");
+}
