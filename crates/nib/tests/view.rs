@@ -562,3 +562,22 @@ fn alignment_is_absent_until_the_author_says_otherwise() {
         Alignment::Center
     ));
 }
+
+// ---------------------------------------------------------------------------
+// Plain text of a selection
+// ---------------------------------------------------------------------------
+
+#[test]
+fn the_text_of_a_selection_inside_one_paragraph_is_its_text() {
+    // The ordinary copy: a word or a phrase, not whole blocks. The slice is
+    // inline content with no block around it.
+    use nib_model::state::{EditorState, Selection};
+    let b = b();
+    let mut content = nodes![b.text("plain ")];
+    content.extend(b.mark(basic::marks::STRONG, None, nodes![b.text("bold")]));
+    let doc = b.doc(nodes![b.node(nodes::PARAGRAPH, content)]);
+    let selection = Selection::between(&doc, 3, 11);
+    let state = EditorState::with_selection(basic::schema(), doc, selection, Vec::new());
+    let slice = state.selection().content(state.doc());
+    assert_eq!(nib::plain_text(&state, &slice), "ain bold");
+}

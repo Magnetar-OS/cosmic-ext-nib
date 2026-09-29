@@ -1978,15 +1978,30 @@ where
 /// "what does this selection look like as text" would drift.
 #[must_use]
 pub fn plain_text(state: &EditorState, slice: &Slice) -> String {
-    let doc = state
-        .schema()
-        .create_and_fill(
-            state.schema().top_node_type(),
+    let schema = state.schema();
+    let mut content = slice.content().clone();
+    // A selection inside one textblock is bare inline content, and a document
+    // cannot hold that directly: without a block around it the text came out
+    // empty, so copying a word put nothing on the clipboard.
+    if content.first_child().is_some_and(Node::is_inline)
+        && let Some(paragraph) = schema.node_id(nib_model::basic::nodes::PARAGRAPH)
+        && let Ok(block) = schema.create(
+            paragraph,
             None,
-            slice.content().clone(),
+            content.clone(),
             nib_model::mark::Marks::none(),
         )
-        .unwrap_or_else(|| state.schema().empty_doc());
+    {
+        content = nib_model::fragment::Fragment::from(block);
+    }
+    let doc = schema
+        .create_and_fill(
+            schema.top_node_type(),
+            None,
+            content,
+            nib_model::mark::Marks::none(),
+        )
+        .unwrap_or_else(|| schema.empty_doc());
     doc.text_between(0, doc.content_size(), Some("\n\n"), None)
 }
 
