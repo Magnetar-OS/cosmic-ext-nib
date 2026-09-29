@@ -447,11 +447,17 @@ impl<'a> Ctx<'a> {
             alt.push_str(text);
             return;
         }
+        // Placed first and marked after, against the node it landed in. A
+        // tight list item holds its text with no paragraph event around it;
+        // asked before placement, the item — which takes no marks — answered
+        // for the paragraph opened inside it, and every emphasis, code span
+        // and link in a tight list was lost.
+        let plain = self.schema.text(text, Marks::none());
+        self.place(plain.type_id());
         let allowed = self.stack.last().map_or_else(Marks::none, |o| {
             self.schema.node_type(o.typ).allowed_marks(&self.marks)
         });
-        let node = self.schema.text(text, allowed);
-        self.add(node);
+        self.push(plain.with_marks(allowed));
     }
 
     /// Sets an attribute on the innermost open node of this type — how a task

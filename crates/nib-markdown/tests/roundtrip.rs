@@ -368,3 +368,16 @@ fn nesting_within_the_depth_cap_keeps_its_structure() {
     }
     assert_eq!(round(&md, &deep), deep);
 }
+
+#[test]
+fn a_tight_list_item_keeps_its_marks() {
+    // A tight list, the kind nearly everyone writes, has no paragraph event
+    // around an item's text; the paragraph is implicit, and so were the marks
+    // it lost.
+    let md = gfm();
+    assert_eq!(
+        md.parse("- **bold** and *em*\n- [link](https://x.test) `code`\n")
+            .to_string(),
+        r#"doc(bullet_list(list_item(paragraph(strong("bold"), " and ", em("em"))), list_item(paragraph(link("link"), " ", code("code")))))"#
+    );
+}
