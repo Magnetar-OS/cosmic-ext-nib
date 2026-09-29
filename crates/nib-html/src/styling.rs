@@ -20,7 +20,7 @@
 //! white-on-white a thing the reader cannot be shown rather than a thing a
 //! parser has to guess at.
 
-use nib_css::{Align, Declarations};
+use nib_css::{Align, Declarations, Hiding, Refusal};
 use nib_model::attrs::Attrs;
 use nib_model::basic::marks;
 use nib_model::mark::Mark;
@@ -49,6 +49,28 @@ impl Styling {
     }
 }
 
+/// What a document's authored styling tried to do that the document does not.
+///
+/// Hidden text is shown anyway and a refused declaration never reaches the
+/// document, so neither leaves a trace in it. This is the record of the
+/// attempts, for a client that tells its reader a message tried to hide text,
+/// or counts what a sender's markup reached for.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Report {
+    /// Each attempt to hide an element's text, in document order.
+    pub hiding: Vec<Hiding>,
+    /// Each declaration that was dropped, and why, in document order.
+    pub refused: Vec<Refusal>,
+}
+
+impl Report {
+    /// True when the author tried to hide text anywhere.
+    #[must_use]
+    pub fn tried_to_hide(&self) -> bool {
+        !self.hiding.is_empty()
+    }
+}
+
 /// Reads an element's styling, from `style=` and from what came before it.
 ///
 /// The presentational attributes are read *first* and the `style` attribute
@@ -56,9 +78,18 @@ impl Styling {
 /// hint and a declaration overrides it.
 #[must_use]
 pub fn of(schema: &Schema, element: &Element) -> Styling {
+    read(schema, element).0
+}
+
+/// [`of`], and what the element's declarations tried that was not obeyed.
+#[must_use]
+pub fn read(schema: &Schema, element: &Element) -> (Styling, Report) {
     let mut declarations = presentational(element);
+    let mut report = Report::default();
     if let Some(style) = element.attr("style") {
         let inline = nib_css::parse(style);
+        report.hiding.clone_from(&inline.hiding);
+        report.refused.clone_from(&inline.refused);
         let hidden = inline.hides();
         // The inline declarations win, and the attributes fill what they do
         // not mention.
@@ -68,7 +99,7 @@ pub fn of(schema: &Schema, element: &Element) -> Styling {
             declarations.hiding.push(nib_css::Hiding::Removed);
         }
     }
-    into_marks(schema, &declarations)
+    (into_marks(schema, &declarations), report)
 }
 
 /// The attributes that did this job before CSS existed, and still arrive.

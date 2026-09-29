@@ -68,6 +68,8 @@ struct Ctx<'a> {
     /// True when the last thing written was whitespace, so a run of it
     /// collapses to one space.
     pending_space: bool,
+    /// What the styling read so far tried and was not allowed.
+    report: crate::styling::Report,
 }
 
 impl<'a> Ctx<'a> {
@@ -86,6 +88,7 @@ impl<'a> Ctx<'a> {
             nesting: 0,
             marks: Marks::none(),
             pending_space: false,
+            report: crate::styling::Report::default(),
         }
     }
 
@@ -404,7 +407,9 @@ fn walk_element(ctx: &mut Ctx<'_>, handle: &Handle, tag: &str, attrs: &[html5eve
     // own — it is transparent — and its colour still belongs to the
     // text inside it. Read before the rule is looked up so the two
     // cannot disagree about which elements are styled.
-    let styling = crate::styling::of(ctx.rules.schema(), &element);
+    let (styling, report) = crate::styling::read(ctx.rules.schema(), &element);
+    ctx.report.hiding.extend(report.hiding);
+    ctx.report.refused.extend(report.refused);
     let outer_marks = ctx.marks.clone();
     for mark in &styling.marks {
         ctx.marks = Mark::add_to_set(mark, &ctx.marks);
@@ -508,13 +513,29 @@ fn walk_children(ctx: &mut Ctx<'_>, handle: &Handle) {
 /// schema's empty document.
 #[must_use]
 pub fn parse(rules: &Rules, html: &str) -> Node {
+    parse_with_report(rules, html).0
+}
+
+/// [`parse`], and a [`Report`](crate::styling::Report) of what the markup's
+/// styling tried that the document does not do — hiding text, fetching,
+/// positioning.
+///
+/// Styling is read down to the depth cap; below it only text is kept, so
+/// nothing there is styled and nothing there is reported.
+///
+/// # Panics
+///
+/// Never; see [`parse`].
+#[must_use]
+pub fn parse_with_report(rules: &Rules, html: &str) -> (Node, crate::styling::Report) {
     let dom = html5ever::parse_document(RcDom::default(), html5ever::ParseOpts::default())
         .from_utf8()
         .read_from(&mut html.as_bytes())
         .unwrap_or_default();
     let mut ctx = Ctx::new(rules, rules.schema().top_node_type());
     walk(&mut ctx, &dom.document);
-    ctx.finish()
+    let report = std::mem::take(&mut ctx.report);
+    (ctx.finish(), report)
 }
 
 /// Parses a fragment as a slice, for a paste.

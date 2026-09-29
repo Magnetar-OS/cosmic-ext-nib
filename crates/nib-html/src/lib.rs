@@ -26,8 +26,9 @@ pub mod rules;
 pub mod styling;
 pub mod write;
 
-pub use parse::{parse, parse_slice};
+pub use parse::{parse, parse_slice, parse_with_report};
 pub use rules::{Element, ParseRule, Rules, Target, WriteRule, base};
+pub use styling::Report;
 pub use write::{slice_to_html, to_html};
 
 use nib_model::node::Node;
@@ -68,6 +69,13 @@ impl Html {
     #[must_use]
     pub fn parse(&self, html: &str) -> Node {
         parse(&self.rules, html)
+    }
+
+    /// Parses a whole document, and reports what its styling tried that the
+    /// document does not do.
+    #[must_use]
+    pub fn parse_with_report(&self, html: &str) -> (Node, Report) {
+        parse_with_report(&self.rules, html)
     }
 
     /// Parses a fragment as a slice, for a paste.
