@@ -1,0 +1,64 @@
+# The toolchain comes from rust-toolchain.toml, which is why no version is
+# named here: one file decides what the distro, the contributor and CI all
+# build with. The steps are the justfile's `ci` recipe, spelled out.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      # libcosmic pulls in the system halves of the COSMIC stack; without
+      # these its build scripts fail before any of this workspace is compiled.
+      # The fonts are for the widget's pointer tests, which hit-test real
+      # shaped text.
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libxkbcommon-dev \
+            libwayland-dev \
+            libudev-dev \
+            libinput-dev \
+            libgbm-dev \
+            libseat-dev \
+            libclang-dev \
+            pkg-config \
+            fonts-dejavu-core
+
+      # rustfmt.toml sets unstable options, so the check needs the nightly
+      # formatter; see the justfile for why stable's would disagree.
+      - name: Install the nightly formatter
+        run: rustup toolchain install nightly --profile minimal --component rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo +nightly fmt --all --check
+
+      # Pedantic is declared in Cargo.toml's workspace lints.
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace --locked
+
+      # The widget without its default `clipboard` feature, which is a
+      # supported configuration with a code path of its own.
+      - name: Build the widget without default features
+        run: cargo build -p cosmic-ext-nib --lib --locked --no-default-features
+
+      # The seven toolkit-free libraries go to crates.io; the widget cannot
+      # (libcosmic is git-only) and is excluded. Packaged and verified
+      # together, in dependency order, against each other's local versions.
+      - name: Publish dry run
+        run: cargo publish --dry-run --locked --workspace --exclude cosmic-ext-nib

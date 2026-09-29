@@ -28,5 +28,16 @@ fmt:
 # then disagrees with `just fmt` about how the imports it just ignored should
 # be laid out. A check that formats differently from the command that fixes it
 # is a check nobody can satisfy.
-ci: && check test
+ci: && check test build-minimal publish-check
     cargo +nightly fmt --all --check
+
+# The widget without its default `clipboard` feature, a supported
+# configuration with a code path of its own.
+build-minimal:
+    cargo build -p cosmic-ext-nib --lib --locked --no-default-features
+
+# The seven crates.io libraries, packaged and verified together in dependency
+# order against each other's local versions. Nothing is uploaded; the widget is
+# excluded because libcosmic is git-only and crates.io refuses git dependencies.
+publish-check:
+    cargo publish --dry-run --locked --workspace --exclude cosmic-ext-nib
