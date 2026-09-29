@@ -290,18 +290,18 @@ fn a_code_block_is_not_read_as_a_component_or_a_module_line() {
     let doc = mdx.parse("```js\nimport x from 'y'\n```\n");
     assert_eq!(
         doc.to_string(),
-        r#"doc(code_block[language=js]("import x from 'y'\n"))"#
+        r#"doc(code_block[language=js]("import x from 'y'"))"#
     );
 
     let mdc = components(Dialect::Mdc);
     let doc = mdc.parse("```\n::card\nhi\n::\n```\n");
-    assert_eq!(doc.to_string(), r#"doc(code_block("::card\nhi\n::\n"))"#);
+    assert_eq!(doc.to_string(), r#"doc(code_block("::card\nhi\n::"))"#);
 
     // Nor does a fence inside a component's body end the component early.
     let doc = mdc.parse("::card\n```\n::\n```\n::\n");
     assert_eq!(
         doc.to_string(),
-        r#"doc(component_block[name=card](code_block("::\n")))"#
+        r#"doc(component_block[name=card](code_block("::")))"#
     );
 }
 
@@ -379,5 +379,142 @@ fn a_tight_list_item_keeps_its_marks() {
         md.parse("- **bold** and *em*\n- [link](https://x.test) `code`\n")
             .to_string(),
         r#"doc(bullet_list(list_item(paragraph(strong("bold"), " and ", em("em"))), list_item(paragraph(link("link"), " ", code("code")))))"#
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Found by the generated round trips (tests/generated.rs)
+// ---------------------------------------------------------------------------
+
+/// Builds a one-paragraph-per-entry document from the basic schema.
+fn written_and_read(md: &Markdown, doc: &nib_model::node::Node) -> nib_model::node::Node {
+    md.parse(&md.to_markdown(doc))
+}
+
+#[test]
+fn code_keeps_its_trailing_spaces_and_gains_no_newline() {
+    let md = gfm();
+    survives(&md, "```\nkeep  \nthese   \n```\n");
+    // Code typed in the editor has no newline at its end; saving and
+    // reopening must not add one.
+    let b = nib_model::build::Builder::new(basic::schema());
+    let doc = b.doc(nib_model::nodes![b.node(
+        nib_model::basic::nodes::CODE_BLOCK,
+        nib_model::nodes![b.text("code")]
+    )]);
+    assert_eq!(written_and_read(&md, &doc), doc);
+}
+
+#[test]
+fn two_lists_side_by_side_stay_two_lists() {
+    let md = gfm();
+    for input in ["- a\n\n* b\n", "1. a\n\n1) b\n", "- a\n\n* b\n\n- c\n"] {
+        survives(&md, input);
+        assert_eq!(
+            md.parse(input).child_count(),
+            input.matches("\n\n").count() + 1
+        );
+    }
+}
+
+#[test]
+fn line_breaks_in_a_row_stay_in_their_paragraph() {
+    // Two in a row as trailing spaces is a line of nothing but spaces, which
+    // is a blank line, which ends the paragraph.
+    let md = gfm();
+    let b = nib_model::build::Builder::new(basic::schema());
+    let br = || b.node(nib_model::basic::nodes::HARD_BREAK, nib_model::nodes![]);
+    let doc = b.doc(nib_model::nodes![b.node(
+        nib_model::basic::nodes::PARAGRAPH,
+        nib_model::nodes![b.text("a"), br(), br(), b.text("b")]
+    )]);
+    assert_eq!(written_and_read(&md, &doc), doc);
+}
+
+#[test]
+fn emphasis_no_delimiter_can_spell_is_written_as_tags_and_read_back() {
+    let md = gfm();
+    // `**` between a letter and punctuation cannot open, so no delimiter
+    // spelling of this exists.
+    let b = nib_model::build::Builder::new(basic::schema());
+    let mut content = nib_model::nodes![b.text("word")];
+    content.extend(b.mark(
+        nib_model::basic::marks::STRONG,
+        None,
+        b.mark(
+            nib_model::basic::marks::STRIKETHROUGH,
+            None,
+            nib_model::nodes![b.text("~bold~")],
+        ),
+    ));
+    content.push(b.text("&x"));
+    let doc = b.doc(nib_model::nodes![
+        b.node(nib_model::basic::nodes::PARAGRAPH, content)
+    ]);
+    let written = md.to_markdown(&doc);
+    assert!(written.contains("<strong>"), "{written}");
+    assert_eq!(md.parse(&written), doc);
+    // Where delimiters work, they are what is written.
+    assert_eq!(round(&md, "a **b** c\n"), "a **b** c\n");
+}
+
+#[test]
+fn inline_emphasis_tags_are_read_and_end_with_their_block() {
+    let md = gfm();
+    assert_eq!(
+        md.parse("a <em>b</em> <b>c</b> <del>d</del>\n").to_string(),
+        r#"doc(paragraph("a ", em("b"), " ", strong("c"), " ", strikethrough("d")))"#
+    );
+    // An unclosed tag does not reach the next block, and a stray closing tag
+    // does not end emphasis a delimiter began.
+    assert_eq!(
+        md.parse("<b>a\n\nb **c</b>d**\n").to_string(),
+        r#"doc(paragraph(strong("a")), paragraph("b ", strong("cd")))"#
+    );
+}
+
+#[test]
+fn escapes_that_read_back_as_other_things_are_escaped() {
+    let md = gfm();
+    for input in [
+        // A `!` before a link would make it an image.
+        "a \\![b](http://x.test)\n",
+        // `#` at a heading's end would be its closing sequence.
+        "# C \\#\n",
+        // An entity in a destination, a title or an info string is decoded
+        // when read.
+        "[a](http://x.test/?q=\\&amp;)\n",
+        "[a](http://x.test \"\\&amp;\")\n",
+        "```\\&amp;\nx\n```\n",
+    ] {
+        survives(&md, input);
+    }
+}
+
+#[test]
+fn list_items_that_are_empty_or_hold_more_keep_their_shape() {
+    let md = gfm();
+    for input in [
+        // An empty item inside a quote.
+        "> - \n> - b\n",
+        // A task item's second paragraph lines up under its text, not its
+        // checkbox.
+        "- [ ] a\n\n  b\n",
+        // A nested list that cannot interrupt a paragraph.
+        "- a\n\n  1. \n",
+        "- a\n\n  3. b\n",
+    ] {
+        survives(&md, input);
+    }
+}
+
+#[test]
+fn whitespace_at_the_edge_of_emphasis_is_read_where_it_can_be_written() {
+    // Markdown cannot put a space just inside a delimiter, so a document read
+    // from Markdown never holds one there either.
+    let md = gfm();
+    assert_eq!(
+        md.parse("_a <span>_ c\n").to_string(),
+        r#"doc(paragraph(em("a"), "  c"))"#
     );
 }

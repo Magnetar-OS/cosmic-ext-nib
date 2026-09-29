@@ -10,6 +10,10 @@ releases before 1.1.1 are described by their git tags.
 - `nib_model::link::is_followable` and `FOLLOWABLE_SCHEMES`: the one link-target policy the HTML parser, the Markdown parser and the widget share.
 - `nib_html::parse_with_report` (and `Html::parse_with_report`, `styling::read`) returns a `Report` with every attempt to hide text and every refused declaration — the accounting that was computed and then thrown away.
 
+### Changed
+
+- Markdown export writes a line break as `\` at the end of the line rather than two trailing spaces, which a line of nothing but spaces turned into a paragraph break.
+
 ### Fixed
 
 - HTML nested deeper than 256 elements no longer overflows the stack and aborts the process. The rest of such a subtree is read as text, and ignored elements inside it (`<script>`, `<style>`) stay dropped.
@@ -33,3 +37,4 @@ releases before 1.1.1 are described by their git tags.
 - HTML: inline markup outside a paragraph — `<b>x</b>` on its own, `<li><em>x</em></li>`, a browser's clipboard fragment — kept its text but lost its marks; it keeps both.
 - HTML: blocks the parser nested inside an unclosed `<pre>` could give a document the schema forbids (a list item inside a list item, an image directly in a quote), and ordinary paragraphs there kept their raw whitespace. Placement is checked again after every close, and only code keeps whitespace as written. Two runs of text no longer meet with a doubled space.
 - Plain text: an empty list item inside a quote was written `> - >`; it is written as its marker alone, with no trailing space for a flowed-text reader to take as a soft break.
+- Markdown: saving a document and opening it again gives back the same document for everything the new generated round-trip tests produce. Code keeps its trailing spaces and gains no newline; lists side by side stay separate; line breaks in a row stay in their paragraph; `!` before a link, `#` ending a heading and entities in link targets, titles and code languages are escaped; empty items, task items with more than one paragraph and nested lists that cannot interrupt a paragraph keep their shape. Emphasis that no `*` or `~~` can express is written as `<strong>`, `<em>` or `<del>`, and those tags — with `<b>`, `<i>`, `<s>` — are read as emphasis, ending with their block.

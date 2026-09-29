@@ -320,6 +320,10 @@ struct Ctx<'a> {
     /// An image being read: its target, title, and the alt text arriving as
     /// events between its start and end.
     pending_image: Option<(String, String, String)>,
+    /// Marks an inline HTML tag opened, which its closing tag or the end of
+    /// the block ends — and nothing else: a stray `</b>` does not end bold a
+    /// `**` began.
+    tag_marks: Vec<&'static str>,
 }
 
 impl<'a> Ctx<'a> {
@@ -336,6 +340,7 @@ impl<'a> Ctx<'a> {
             open_tags: Vec::new(),
             marks: Marks::none(),
             pending_image: None,
+            tag_marks: Vec::new(),
         }
     }
 
@@ -363,7 +368,20 @@ impl<'a> Ctx<'a> {
             return;
         }
         let open = self.stack.pop().expect("just checked the length");
-        let content = Fragment::from_vec(open.content);
+        let typ = self.schema.node_type(open.typ);
+        let content = if typ.is_textblock() {
+            Fragment::from_vec(textblock_content(open.content, typ.spec().code))
+        } else {
+            Fragment::from_vec(open.content)
+        };
+        // A paragraph with nothing left in it is one Markdown cannot write; it
+        // was only ever whitespace or markup the parser dropped. Where the
+        // schema needs one, filling the parent puts it back.
+        if content.is_empty()
+            && self.schema.node_id(nib_model::basic::nodes::PARAGRAPH) == Some(open.typ)
+        {
+            return;
+        }
         let Some(node) =
             self.schema
                 .create_and_fill(open.typ, Some(&open.attrs), content, Marks::none())
@@ -616,7 +634,13 @@ fn walk(ctx: &mut Ctx<'_>, dialect: Dialect, source: &str) {
                 | TagEnd::Item
                 | TagEnd::Table
                 | TagEnd::TableRow
-                | TagEnd::TableCell => ctx.close_tag(),
+                | TagEnd::TableCell => {
+                    // Inline HTML does not reach past its block.
+                    for mark in std::mem::take(&mut ctx.tag_marks) {
+                        ctx.remove_mark(mark);
+                    }
+                    ctx.close_tag();
+                }
                 TagEnd::Image => {
                     if let Some((src, title, alt)) = ctx.pending_image.take() {
                         let mut attrs = Attrs::none().set("src", src.as_str());
@@ -643,11 +667,174 @@ fn walk(ctx: &mut Ctx<'_>, dialect: Dialect, source: &str) {
             Event::TaskListMarker(checked) => {
                 ctx.set_open_attr(nodes::LIST_ITEM, "checked", Value::Bool(checked));
             }
+            // The tags Markdown lets stand in for its own emphasis, which is
+            // how emphasis no delimiter can spell is written.
+            Event::InlineHtml(html) if let Some((mark, opens)) = emphasis_tag(&html) => {
+                if opens {
+                    ctx.add_mark(mark, None);
+                    ctx.tag_marks.push(mark);
+                } else if let Some(at) = ctx.tag_marks.iter().rposition(|m| *m == mark) {
+                    ctx.tag_marks.remove(at);
+                    if !ctx.tag_marks.contains(&mark) {
+                        ctx.remove_mark(mark);
+                    }
+                }
+            }
             Event::Html(html) | Event::InlineHtml(html) if dialect == Dialect::Mdx => {
                 mdx_tag(ctx, &html);
             }
             _ => {}
         }
+    }
+}
+
+/// A textblock's content as a document holds it, whatever the source's
+/// incidental whitespace.
+///
+/// Code keeps every character except the newline before its closing fence,
+/// which belongs to the fence: code typed in the editor has none, and without
+/// taking it off every save and reopen would add one. Prose loses whitespace
+/// at its edges and beside a line break, which Markdown cannot write — it is
+/// what inline HTML the parser dropped leaves behind — so a document that held
+/// it would change on its way back in.
+/// An inline HTML tag that stands for an emphasis mark: the mark, and
+/// whether the tag opens it.
+fn emphasis_tag(html: &str) -> Option<(&'static str, bool)> {
+    use nib_model::basic::marks;
+    let tag = html.trim().to_ascii_lowercase();
+    let inner = tag.strip_prefix('<')?.strip_suffix('>')?.trim_end();
+    let (name, opens) = match inner.strip_prefix('/') {
+        Some(name) => (name.trim(), false),
+        None => (inner, true),
+    };
+    let mark = match name {
+        "em" | "i" => marks::EM,
+        "strong" | "b" => marks::STRONG,
+        "del" | "s" | "strike" => marks::STRIKETHROUGH,
+        _ => return None,
+    };
+    Some((mark, opens))
+}
+
+pub(crate) fn textblock_content(mut content: Vec<Node>, code: bool) -> Vec<Node> {
+    if code {
+        if let Some(last) = content.last_mut()
+            && let Some(text) = last.text()
+            && let Some(kept) = text.strip_suffix('\n')
+        {
+            *last = last.with_text(kept.to_owned());
+        }
+    } else {
+        // A line break at either end of a block breaks nothing, and Markdown
+        // has no way to write one there.
+        let is_hard_break = |node: &Node| node.type_name() == nib_model::basic::nodes::HARD_BREAK;
+        let blank = |node: &Node| node.text().is_some_and(|text| text.trim().is_empty());
+        while content
+            .first()
+            .is_some_and(|n| is_hard_break(n) || blank(n))
+        {
+            content.remove(0);
+        }
+        while content.last().is_some_and(|n| is_hard_break(n) || blank(n)) {
+            content.pop();
+        }
+        let is_break = |node: Option<&Node>| {
+            node.is_none_or(|n| n.type_name() == nib_model::basic::nodes::HARD_BREAK)
+        };
+        for i in 0..content.len() {
+            let Some(text) = content[i].text() else {
+                continue;
+            };
+            let mut trimmed = text;
+            if is_break(i.checked_sub(1).and_then(|j| content.get(j))) {
+                trimmed = trimmed.trim_start();
+            }
+            if is_break(content.get(i + 1)) {
+                trimmed = trimmed.trim_end();
+            }
+            if trimmed.len() != text.len() {
+                content[i] = content[i].with_text(trimmed.to_owned());
+            }
+        }
+    }
+    content.retain(|node| node.text().is_none_or(|text| !text.is_empty()));
+    if !code {
+        content = whitespace_outside_marks(&content);
+    }
+    content
+}
+
+/// Moves whitespace at the edge of emphasised text out of the emphasis, the
+/// way it has to be written.
+///
+/// A delimiter beside whitespace neither opens nor closes, so the writer puts
+/// a run's edge whitespace outside the delimiters that open or close there:
+/// leading whitespace keeps only the marks the run shares with the one before,
+/// trailing only those it shares with the one after, and a run that is all
+/// whitespace only those its two neighbours share. Reading the same shape
+/// here means a document and its written form agree. Code and links are left
+/// alone; their text is written inside their own brackets.
+fn whitespace_outside_marks(content: &[Node]) -> Vec<Node> {
+    use nib_model::basic::marks::{CODE, LINK};
+
+    let shared = |a: &Marks, b: &Marks| -> Marks {
+        Marks::from_vec(
+            a.iter()
+                .zip(b.iter())
+                .take_while(|(x, y)| x == y)
+                .map(|(x, _)| x.clone())
+                .collect(),
+        )
+    };
+    let emphasised = |node: &Node| {
+        node.is_text()
+            && !node.marks().is_empty()
+            && !node.marks().iter().any(|m| matches!(m.name(), CODE | LINK))
+    };
+    let none = Marks::none();
+    let mut out: Vec<Node> = Vec::with_capacity(content.len());
+    for (i, node) in content.iter().enumerate() {
+        let Some(text) = node.text().filter(|_| emphasised(node)) else {
+            push_joined(&mut out, node.clone());
+            continue;
+        };
+        let before = out.last().map_or(&none, Node::marks).clone();
+        // The run after, skipping marked whitespace, which is itself only
+        // whitespace between the two.
+        let after = content[i + 1..]
+            .iter()
+            .find(|next| !(emphasised(next) && next.text().is_some_and(|t| t.trim().is_empty())))
+            .map_or(&none, Node::marks);
+        let pieces = if text.trim().is_empty() {
+            vec![(text, shared(&before, after))]
+        } else {
+            let start = text.len() - text.trim_start().len();
+            let end = text.trim_end().len();
+            vec![
+                (&text[..start], shared(&before, node.marks())),
+                (&text[start..end], node.marks().clone()),
+                (&text[end..], shared(node.marks(), after)),
+            ]
+        };
+        for (piece, marks) in pieces {
+            if piece.is_empty() {
+                continue;
+            }
+            push_joined(&mut out, node.with_text(piece.to_owned()).with_marks(marks));
+        }
+    }
+    out
+}
+
+/// Appends a node, joining it to the text before it when the two carry the
+/// same marks — as the parser would have delivered them.
+fn push_joined(out: &mut Vec<Node>, node: Node) {
+    match out.last_mut() {
+        Some(last) if last.is_text() && node.is_text() && last.same_markup(&node) => {
+            let joined = format!("{}{}", last.text().unwrap_or(""), node.text().unwrap_or(""));
+            *last = last.with_text(joined);
+        }
+        _ => out.push(node),
     }
 }
 
