@@ -97,7 +97,7 @@ opaque island. The two meet at the HTML serialiser, not in the layout engine.
 
 ## State
 
-All the crates are written and tested, at 411 tests with no warnings under
+All the crates are written and tested, at 449 tests with no warnings under
 pedantic clippy.
 
 **`nib-model`** — schema and content-expression compiler, the node tree, marks,

@@ -1,9 +1,11 @@
 # Changelog
 
 Notable changes to the Nib workspace. Versions follow semantic versioning;
-releases before 1.1.1 are described by their git tags.
+releases before 1.2.0 are described by their git tags.
 
 ## [Unreleased]
+
+## [1.2.0] - 2026-09-29
 
 ### Added
 
