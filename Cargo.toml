@@ -33,7 +33,7 @@ edition = "2024"
 # that changes to *these* files come back.
 license = "MPL-2.0"
 repository = "https://github.com/Magnetar-OS/cosmic-ext-nib"
-rust-version = "1.98.1"
+rust-version = "1.99.0"
 authors = ["Dominikos Pritis"]
 
 [workspace.dependencies]
