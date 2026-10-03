@@ -47,7 +47,7 @@ fn a_known_word_gets_no_squiggle() {
     let doc = b.doc(nodes![
         b.node(nodes::PARAGRAPH, nodes![b.text("hello world")])
     ]);
-    assert!(misspellings(&speller(), &doc).is_empty());
+    assert_eq!(misspellings(&speller(), &doc), []);
 }
 
 #[test]
@@ -96,7 +96,7 @@ fn inline_code_is_not_prose_either() {
             b.text(" is a document"),
         ]
     )]);
-    assert!(misspellings(&speller(), &doc).is_empty());
+    assert_eq!(misspellings(&speller(), &doc), []);
 }
 
 #[test]
@@ -122,7 +122,7 @@ fn a_learnt_word_stops_being_a_misspelling() {
     assert_eq!(words(&speller, &doc), ["zzzz"]);
 
     speller.learn("zzzz");
-    assert!(misspellings(&speller, &doc).is_empty());
+    assert_eq!(misspellings(&speller, &doc), []);
     assert_eq!(speller.learnt().collect::<Vec<_>>(), ["zzzz"]);
 
     speller.unlearn("zzzz");
@@ -200,5 +200,5 @@ fn a_word_split_by_formatting_is_still_one_word() {
     let mut content = nodes![b.text("hel")];
     content.extend(b.mark("strong", None, nodes![b.text("lo")]));
     let doc = b.doc(nodes![b.node(nodes::PARAGRAPH, content)]);
-    assert!(misspellings(&speller(), &doc).is_empty());
+    assert_eq!(misspellings(&speller(), &doc), []);
 }

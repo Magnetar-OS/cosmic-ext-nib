@@ -223,7 +223,7 @@ fn a_rule_is_a_box_with_no_text() {
     ]);
     let found = flatten(&doc);
     assert_eq!(found[1].kind, blocks::Kind::Rule);
-    assert!(found[1].text.is_empty());
+    assert_eq!(found[1].text, "");
 }
 
 // ---------------------------------------------------------------------------
@@ -467,7 +467,7 @@ fn each_caret_shape_occupies_what_it_should() {
 fn an_empty_document_is_one_block_with_no_text() {
     let found = flatten(&basic::schema().empty_doc());
     assert_eq!(found.len(), 1, "{found:?}");
-    assert!(found[0].text.is_empty());
+    assert_eq!(found[0].text, "");
 }
 
 /// And a document with anything in it is not that, so the placeholder goes
@@ -478,7 +478,7 @@ fn a_document_with_one_character_no_longer_looks_empty() {
     let doc = b.doc(nodes![b.node(nodes::PARAGRAPH, nodes![b.text("x")])]);
     let found = flatten(&doc);
     assert_eq!(found.len(), 1);
-    assert!(!found[0].text.is_empty());
+    assert_ne!(found[0].text, "");
 }
 
 // ---------------------------------------------------------------------------

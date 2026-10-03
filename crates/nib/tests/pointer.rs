@@ -14,6 +14,10 @@ use nib_model::node::Node;
 use nib_model::state::{EditorState, Selection};
 use nib_model::{attrs, nodes};
 
+/// What [`links`] returns when nothing was followed, typed so a failing
+/// assertion can print the link that was.
+const NO_LINKS: [&str; 0] = [];
+
 fn links(actions: &[Action]) -> Vec<String> {
     actions
         .iter()
@@ -71,11 +75,11 @@ fn a_click_beside_a_link_reports_nothing() {
             .read_only()
             .on_action(|a| a),
     );
-    assert!(links(&window.click(on_plain())).is_empty());
+    assert_eq!(links(&window.click(on_plain())), NO_LINKS);
     // Past the end of the line is not on the link either.
     let s = style();
     let beyond = Point::new(395.0, s.padding + s.text_size * 0.6);
-    assert!(links(&window.click(beyond)).is_empty());
+    assert_eq!(links(&window.click(beyond)), NO_LINKS);
 }
 
 #[test]
@@ -97,7 +101,7 @@ fn a_drag_that_starts_on_a_link_selects_rather_than_follows() {
         on_plain(),
     ));
     published.extend(window.send(&left(false), on_link()));
-    assert!(links(&published).is_empty());
+    assert_eq!(links(&published), NO_LINKS);
 }
 
 #[test]
@@ -111,7 +115,7 @@ fn a_press_on_a_link_released_elsewhere_follows_nothing() {
     );
     let mut published = window.send(&left(true), on_link());
     published.extend(window.send(&left(false), on_plain()));
-    assert!(links(&published).is_empty());
+    assert_eq!(links(&published), NO_LINKS);
 }
 
 #[test]
@@ -122,7 +126,7 @@ fn in_an_editor_a_plain_click_places_the_caret_and_a_command_click_follows() {
     let mut window = Window::new(nib::editor(&state).style(style()).on_action(|a| a));
 
     let plain = window.click(on_link());
-    assert!(links(&plain).is_empty());
+    assert_eq!(links(&plain), NO_LINKS);
     assert!(
         plain.iter().any(|a| matches!(a, Action::Edit(_))),
         "the caret moved"
@@ -137,7 +141,7 @@ fn in_an_editor_a_plain_click_places_the_caret_and_a_command_click_follows() {
     );
 
     window.send(&modifiers(keyboard::Modifiers::empty()), on_link());
-    assert!(links(&window.click(on_link())).is_empty());
+    assert_eq!(links(&window.click(on_link())), NO_LINKS);
 }
 
 #[test]
@@ -151,7 +155,7 @@ fn a_target_the_policy_refuses_is_never_reported() {
             .read_only()
             .on_action(|a| a),
     );
-    assert!(links(&window.click(on_link())).is_empty());
+    assert_eq!(links(&window.click(on_link())), NO_LINKS);
     assert_eq!(window.pointer_at(on_link()), mouse::Interaction::Text);
 }
 

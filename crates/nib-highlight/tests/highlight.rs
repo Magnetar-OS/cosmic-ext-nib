@@ -114,7 +114,7 @@ fn a_block_with_no_language_is_left_alone() {
 #[test]
 fn a_language_nobody_knows_is_left_alone() {
     let doc = code("nonesuch", "fn main() {}");
-    assert!(classes(&doc).is_empty());
+    assert_eq!(classes(&doc), []);
 }
 
 #[test]
@@ -124,7 +124,7 @@ fn prose_is_not_highlighted() {
         nodes::PARAGRAPH,
         nodes![b.text("fn main() is not code here")]
     )]);
-    assert!(classes(&doc).is_empty());
+    assert_eq!(classes(&doc), []);
 }
 
 #[test]
