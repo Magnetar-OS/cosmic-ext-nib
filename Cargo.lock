@@ -933,7 +933,7 @@ dependencies = [
 
 [[package]]
 name = "cosmic-ext-nib"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "cosmic-ext-nib-css",
  "cosmic-ext-nib-html",
@@ -944,14 +944,14 @@ dependencies = [
 
 [[package]]
 name = "cosmic-ext-nib-css"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "cosmic-ext-nib-model",
 ]
 
 [[package]]
 name = "cosmic-ext-nib-highlight"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "cosmic-ext-nib-model",
  "syntect",
@@ -959,7 +959,7 @@ dependencies = [
 
 [[package]]
 name = "cosmic-ext-nib-html"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "cosmic-ext-nib-css",
  "cosmic-ext-nib-model",
@@ -968,7 +968,7 @@ dependencies = [
 
 [[package]]
 name = "cosmic-ext-nib-markdown"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "cosmic-ext-nib-model",
  "pulldown-cmark",
@@ -976,7 +976,7 @@ dependencies = [
 
 [[package]]
 name = "cosmic-ext-nib-model"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "regex",
  "thiserror 2.0.21",
@@ -985,7 +985,7 @@ dependencies = [
 
 [[package]]
 name = "cosmic-ext-nib-spell"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "cosmic-ext-nib-model",
  "spellbook",
@@ -995,7 +995,7 @@ dependencies = [
 
 [[package]]
 name = "cosmic-ext-nib-text"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "cosmic-ext-nib-model",
  "unicode-segmentation",
