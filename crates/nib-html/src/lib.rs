@@ -21,6 +21,7 @@
 //! Applications that need to keep something add it to the schema and to the
 //! [`Rules`], in that order.
 
+mod dom;
 pub mod parse;
 pub mod rules;
 pub mod styling;

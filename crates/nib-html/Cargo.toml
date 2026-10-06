@@ -19,7 +19,6 @@ nib-model.workspace = true
 # a given background is the view's question, not this crate's.
 nib-css.workspace = true
 html5ever.workspace = true
-markup5ever_rcdom.workspace = true
 
 [lints]
 workspace = true

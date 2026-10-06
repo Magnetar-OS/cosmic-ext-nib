@@ -11,11 +11,13 @@
 //! about what some bytes mean. Every sanitiser bypass ever written is that
 //! disagreement.
 //!
+//! html5ever decides the tree; the `dom` module is only where it is kept.
+//!
 //! # And one schema
 //!
 //! What comes out is not the HTML tree; it is the closest *valid document*.
 //! The parse walks the DOM and asks the schema where each thing may go, using
-//! the same [`ContentMatch`](nib_model::ContentMatch) searches the fitter uses:
+//! the same [`ContentMatch`] searches the fitter uses:
 //! a `<p>` inside a `<p>` becomes two paragraphs, a `<li>` outside a list gets
 //! a list built around it, and anything with nowhere to go is dropped rather
 //! than smuggled in. Nothing downstream has to re-check the result.
@@ -23,7 +25,6 @@
 use std::collections::BTreeMap;
 
 use html5ever::tendril::TendrilSink;
-use markup5ever_rcdom::{Handle, NodeData, RcDom};
 use nib_model::attrs::Attrs;
 use nib_model::content::ContentMatch;
 use nib_model::fragment::Fragment;
@@ -32,6 +33,7 @@ use nib_model::node::Node;
 use nib_model::schema::{NodeTypeId, Whitespace};
 use nib_model::slice::Slice;
 
+use crate::dom::{Data, Dom, Id, Sink};
 use crate::rules::{Element, ElementAttrs, Rules, Target};
 
 /// A node being built.
@@ -342,30 +344,28 @@ fn element_attrs(attrs: &[html5ever::Attribute]) -> ElementAttrs {
 ///
 /// Enough for a rule to look one level in without this module handing
 /// html5ever's types to the rule table.
-fn child_elements(handle: &Handle) -> BTreeMap<String, ElementAttrs> {
+fn child_elements(dom: &Dom, id: Id) -> BTreeMap<String, ElementAttrs> {
     let mut out = BTreeMap::new();
-    for child in handle.children.borrow().iter() {
-        if let NodeData::Element { name, attrs, .. } = &child.data {
+    for child in dom.children(id) {
+        if let Data::Element { name, attrs, .. } = dom.data(*child) {
             out.entry(name.local.to_string())
-                .or_insert_with(|| element_attrs(&attrs.borrow()));
+                .or_insert_with(|| element_attrs(attrs));
         }
     }
     out
 }
 
-fn walk(ctx: &mut Ctx<'_>, handle: &Handle) {
-    match &handle.data {
-        NodeData::Text { contents } => {
-            ctx.text(&contents.borrow());
-        }
-        NodeData::Element { .. } if ctx.nesting >= MAX_DEPTH => flatten(ctx, handle),
-        NodeData::Element { name, attrs, .. } => {
+fn walk(ctx: &mut Ctx<'_>, dom: &Dom, id: Id) {
+    match dom.data(id) {
+        Data::Text(text) => ctx.text(text),
+        Data::Element { .. } if ctx.nesting >= MAX_DEPTH => flatten(ctx, dom, id),
+        Data::Element { name, attrs, .. } => {
             ctx.nesting += 1;
-            walk_element(ctx, handle, name.local.as_ref(), &attrs.borrow());
+            walk_element(ctx, dom, id, name.local.as_ref(), attrs);
             ctx.nesting -= 1;
         }
-        NodeData::Document | NodeData::Doctype { .. } => walk_children(ctx, handle),
-        NodeData::Comment { .. } | NodeData::ProcessingInstruction { .. } => {}
+        Data::Root => walk_children(ctx, dom, id),
+        Data::Skipped => {}
     }
 }
 
@@ -373,33 +373,33 @@ fn walk(ctx: &mut Ctx<'_>, handle: &Handle) {
 ///
 /// What an ignored element holds is still ignored — a `<script>` a thousand
 /// levels down is no more content than one at the top.
-fn flatten(ctx: &mut Ctx<'_>, root: &Handle) {
-    let mut pending = vec![root.clone()];
-    while let Some(handle) = pending.pop() {
-        match &handle.data {
-            NodeData::Text { contents } => ctx.text(&contents.borrow()),
-            NodeData::Element { name, attrs, .. } => {
-                let attrs = element_attrs(&attrs.borrow());
+fn flatten(ctx: &mut Ctx<'_>, dom: &Dom, root: Id) {
+    let mut pending = vec![root];
+    while let Some(id) = pending.pop() {
+        match dom.data(id) {
+            Data::Text(text) => ctx.text(text),
+            Data::Element { name, attrs, .. } => {
+                let attrs = element_attrs(attrs);
                 let ignored = ctx
                     .rules
                     .rule_for(name.local.as_ref(), &attrs)
                     .is_some_and(|rule| matches!(rule.target, Target::Ignore));
                 if !ignored {
                     // Reversed, so they come off the stack in document order.
-                    pending.extend(handle.children.borrow().iter().rev().cloned());
+                    pending.extend(dom.children(id).iter().rev());
                 }
             }
-            _ => {}
+            Data::Root | Data::Skipped => {}
         }
     }
 }
 
 /// One element within the depth limit: its styling, then its rule.
-fn walk_element(ctx: &mut Ctx<'_>, handle: &Handle, tag: &str, attrs: &[html5ever::Attribute]) {
+fn walk_element(ctx: &mut Ctx<'_>, dom: &Dom, id: Id, tag: &str, attrs: &[html5ever::Attribute]) {
     let attrs = element_attrs(attrs);
     let element = Element {
         tag: tag.to_owned(),
-        children: child_elements(handle),
+        children: child_elements(dom, id),
         attrs: attrs.clone(),
     };
     // Styling first, and for *every* element rather than only the ones
@@ -419,45 +419,46 @@ fn walk_element(ctx: &mut Ctx<'_>, handle: &Handle, tag: &str, attrs: &[html5eve
         // An unknown tag is a container, not content. Dropping it
         // outright would lose text; treating it as its own node would
         // invent structure the schema never declared.
-        walk_children(ctx, handle);
+        walk_children(ctx, dom, id);
         ctx.marks = outer_marks;
         return;
     };
-    walk_rule(ctx, handle, &element, rule, &styling);
+    walk_rule(ctx, dom, id, &element, rule, &styling);
     ctx.marks = outer_marks;
 }
 
 /// What one element's rule does, with its styling already on the mark stack.
 fn walk_rule(
     ctx: &mut Ctx<'_>,
-    handle: &Handle,
+    dom: &Dom,
+    id: Id,
     element: &Element,
     rule: &crate::rules::ParseRule,
     styling: &crate::styling::Styling,
 ) {
     match rule.target.clone() {
         Target::Ignore => {}
-        Target::Transparent => walk_children(ctx, handle),
-        Target::Mark(id) => {
+        Target::Transparent => walk_children(ctx, dom, id),
+        Target::Mark(mark_id) => {
             // A mark the surrounding node forbids is not applied — the
             // element becomes transparent. This is what makes
             // `<pre><code>` one code block rather than a code block
             // full of inline code, without a special case for it.
-            if !ctx.allows_mark(id) {
-                walk_children(ctx, handle);
+            if !ctx.allows_mark(mark_id) {
+                walk_children(ctx, dom, id);
                 return;
             }
             let mark_attrs = rule.attrs.as_ref().and_then(|f| f(element));
-            let Ok(mark) = ctx.rules.schema().mark_by_id(id, mark_attrs.as_ref()) else {
-                walk_children(ctx, handle);
+            let Ok(mark) = ctx.rules.schema().mark_by_id(mark_id, mark_attrs.as_ref()) else {
+                walk_children(ctx, dom, id);
                 return;
             };
             let outer = ctx.marks.clone();
             ctx.marks = Mark::add_to_set(&mark, &outer);
-            walk_children(ctx, handle);
+            walk_children(ctx, dom, id);
             ctx.marks = outer;
         }
-        Target::Node(id) => {
+        Target::Node(typ) => {
             let mut node_attrs = rule
                 .attrs
                 .as_ref()
@@ -469,35 +470,35 @@ fn walk_rule(
             // schema declared somewhere to put it.
             if let Some(align) = styling.align
                 && schema
-                    .node_type(id)
+                    .node_type(typ)
                     .spec()
                     .attrs
                     .contains_key(nib_model::basic::attrs::ALIGN)
             {
                 node_attrs = node_attrs.set(nib_model::basic::attrs::ALIGN, align.as_str());
             }
-            if schema.node_type(id).is_leaf() {
+            if schema.node_type(typ).is_leaf() {
                 if let Ok(node) =
-                    schema.create(id, Some(&node_attrs), Fragment::empty(), Marks::none())
+                    schema.create(typ, Some(&node_attrs), Fragment::empty(), Marks::none())
                 {
                     ctx.add(node);
                 }
                 return;
             }
             let depth = ctx.depth();
-            ctx.open(id, node_attrs);
+            ctx.open(typ, node_attrs);
             // A block boundary breaks a run of inline whitespace.
             ctx.pending_space = false;
-            walk_children(ctx, handle);
+            walk_children(ctx, dom, id);
             ctx.close_to(depth);
             ctx.pending_space = false;
         }
     }
 }
 
-fn walk_children(ctx: &mut Ctx<'_>, handle: &Handle) {
-    for child in handle.children.borrow().iter() {
-        walk(ctx, child);
+fn walk_children(ctx: &mut Ctx<'_>, dom: &Dom, id: Id) {
+    for child in dom.children(id) {
+        walk(ctx, dom, *child);
     }
 }
 
@@ -528,12 +529,12 @@ pub fn parse(rules: &Rules, html: &str) -> Node {
 /// Never; see [`parse`].
 #[must_use]
 pub fn parse_with_report(rules: &Rules, html: &str) -> (Node, crate::styling::Report) {
-    let dom = html5ever::parse_document(RcDom::default(), html5ever::ParseOpts::default())
+    let dom = html5ever::parse_document(Sink::default(), html5ever::ParseOpts::default())
         .from_utf8()
         .read_from(&mut html.as_bytes())
         .unwrap_or_default();
     let mut ctx = Ctx::new(rules, rules.schema().top_node_type());
-    walk(&mut ctx, &dom.document);
+    walk(&mut ctx, &dom, Dom::DOCUMENT);
     let report = std::mem::take(&mut ctx.report);
     (ctx.finish(), report)
 }

@@ -51,8 +51,7 @@ thiserror = "2"
 # One parser, and it is the one browsers agree with. A hand-written HTML
 # tokeniser is how a sanitiser and a renderer come to disagree about what some
 # bytes mean, which is the shape of every sanitiser bypass ever written.
-html5ever = "0.39"
-markup5ever_rcdom = "0.39"
+html5ever = "0.40"
 # CommonMark plus the GitHub extensions, as a pull parser: events in document
 # order are exactly what a node stack wants.
 pulldown-cmark = { version = "0.13", default-features = false, features = ["simd"] }

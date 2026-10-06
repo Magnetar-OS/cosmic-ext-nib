@@ -477,6 +477,59 @@ fn a_script_below_the_depth_cap_is_still_dropped() {
 }
 
 #[test]
+fn a_charset_declaration_cut_short_does_not_take_the_parse_down() {
+    // A `<meta>` whose `content` ends at the word `charset`, or just past
+    // it, made the HTML parser index past the end of the value and panic —
+    // in a mail client, on opening the message.
+    for content in [
+        "text/html; charset",
+        "text/html; charset ",
+        "text/html; charset=",
+        "text/html; charset='",
+        "charset",
+    ] {
+        let input = format!(r#"<meta http-equiv="Content-Type" content="{content}"><p>kept</p>"#);
+        assert_eq!(round(&input), "<p>kept</p>", "{content:?}");
+    }
+}
+
+#[test]
+fn what_a_template_holds_is_not_part_of_the_document() {
+    // A `<template>`'s contents are inert: a browser shows none of them, and
+    // neither does the document.
+    assert_eq!(
+        round("<template><p>inert</p></template><p>shown</p>"),
+        "<p>shown</p>"
+    );
+    assert_eq!(
+        round("<table><template><tr><td>inert</td></tr></template><tr><td>shown</td></tr></table>"),
+        "<table><tr><td><p>shown</p></td></tr></table>"
+    );
+}
+
+#[test]
+fn table_content_in_the_wrong_place_is_kept_and_moved_out() {
+    // Text straight inside a `<table>` is put before it by the HTML parser;
+    // the document keeps both.
+    assert_eq!(
+        round("<table><tr><td>cell</td></tr>stray</table>"),
+        "<p>stray</p><table><tr><td><p>cell</p></td></tr></table>"
+    );
+}
+
+#[test]
+fn misnested_inline_markup_keeps_each_run_under_the_marks_it_was_written_in() {
+    assert_eq!(
+        round("<p>1<b>2<i>3</b>4</i>5</p>"),
+        "<p>1<strong>2</strong><em><strong>3</strong>4</em>5</p>"
+    );
+    assert_eq!(
+        round("<b>1<p>2</b>3</p>"),
+        "<p><strong>1</strong></p><p><strong>2</strong>3</p>"
+    );
+}
+
+#[test]
 fn inline_markup_outside_a_paragraph_keeps_its_marks() {
     // A browser puts a selection on the clipboard as bare inline HTML, and
     // mail writes list items without paragraphs; the paragraph is implicit,

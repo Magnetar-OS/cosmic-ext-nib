@@ -8,6 +8,12 @@ releases before 1.2.0 are described by their git tags.
 ### Changed
 
 - The minimum supported Rust version is 1.99.0, raised from 1.98.1. The pinned toolchain and `rust-version` move together, so the workspace no longer builds on an older compiler.
+- `nib-html` parses with html5ever 0.40.1 and keeps the parsed tree in a structure of its own. `markup5ever_rcdom`, which had no release for html5ever 0.40, is no longer a dependency, and `xml5ever` goes with it. The public API is unchanged, and so is every document: the new and old parsers agree on all 1,792 inputs of the HTML tree-construction conformance tests and on 250,000 generated ones.
+- HTML nested tens of thousands of block elements deep parses in about half the time: 50,000 nested `<div>`s took 4.2 s and take 2.1 s. The time that remains is the HTML parser's own, which looks back up its stack of open elements for every block-level tag.
+
+### Fixed
+
+- HTML: a `<meta http-equiv="Content-Type">` whose `content` stopped at the word `charset` — `content="text/html; charset"` — made the HTML parser read past the end of the value and panic, which in a mail reader is a crash on opening the message. It parses.
 
 ## [1.2.0] - 2026-09-29
 
