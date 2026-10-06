@@ -118,8 +118,7 @@ impl Keymap {
     /// tab width is one the author did not write.
     pub const CODE_INDENT: usize = 4;
 
-    /// The bindings an editor has unless it says otherwise. See
-    /// [`base_keymap`].
+    /// The bindings an editor has unless it says otherwise.
     #[must_use]
     pub fn base(schema: &crate::schema::Schema) -> Self {
         base_keymap(schema)

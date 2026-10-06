@@ -16,14 +16,14 @@
 //!
 //! # The shape of it
 //!
-//! - A [`Schema`](schema::Schema) declares the node and mark types a document
+//! - A [`Schema`] declares the node and mark types a document
 //!   may contain, and — through [`content`] — compiles each type's content
 //!   expression into a DFA that can be *searched*, not merely consulted.
-//! - A document is a tree of [`Node`](node::Node)s. Nodes are immutable and
+//! - A document is a tree of [`Node`]s. Nodes are immutable and
 //!   share structure, so a keystroke rebuilds one paragraph and the spine
 //!   above it and leaves every other subtree pointed at by both versions.
 //! - Positions into that tree are flat integers, resolved on demand into a
-//!   path by [`ResolvedPos`](resolve::ResolvedPos).
+//!   path by [`ResolvedPos`].
 //! - Changes are [`Step`](transform::Step)s. Every step can be *inverted*
 //!   against the document it applied to, and *mapped* through other steps.
 //!   Those two properties are all of undo and all of collaborative editing;

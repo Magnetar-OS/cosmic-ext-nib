@@ -22,7 +22,7 @@
 //! # Selections are mapped, never recomputed
 //!
 //! After any change — local, remote, or an undo — the selection goes through
-//! the same [`Mapping`](crate::transform::Mapping) as every other position.
+//! the same [`Mapping`] as every other position.
 //! When mapping lands the head somewhere a caret cannot be, [`Selection::near`]
 //! searches outwards for the closest place one can.
 

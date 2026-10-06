@@ -19,8 +19,8 @@
 //! the right edge, and whether both — the case where a single node is being
 //! rebuilt from three pieces. It refuses rather than guesses: joining a
 //! `list_item` onto a `paragraph` is an error, not something to paper over,
-//! and the caller — [`fit`](crate::fit) — is the one that knows how to retry
-//! with the slice opened differently.
+//! and the caller — [`fit`](crate::transform::fit) — is the one that knows
+//! how to retry with the slice opened differently.
 
 use crate::fragment::Fragment;
 use crate::node::Node;

@@ -26,7 +26,7 @@
 //! A transaction marked `addToHistory: false` — a remote edit, a
 //! decoration-only change — is not added to either branch, but its position
 //! map *is*, so the inverted steps already on the stack still point at the
-//! right places afterwards. That is why an [`Item`] can hold a map with no
+//! right places afterwards. That is why an `Item` can hold a map with no
 //! step.
 
 use std::sync::Arc;

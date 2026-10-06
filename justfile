@@ -28,8 +28,13 @@ fmt:
 # then disagrees with `just fmt` about how the imports it just ignored should
 # be laid out. A check that formats differently from the command that fixes it
 # is a check nobody can satisfy.
-ci: && check test build-minimal publish-check
+ci: && check test doc build-minimal publish-check
     cargo +nightly fmt --all --check
+
+# The public documentation, warnings denied: a link that does not resolve is
+# a dead link on docs.rs, where the seven published crates are read.
+doc *args:
+    RUSTDOCFLAGS='-D warnings' cargo doc --workspace --no-deps --locked {{args}}
 
 # The widget without its default `clipboard` feature, a supported
 # configuration with a code path of its own.

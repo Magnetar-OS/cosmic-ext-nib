@@ -48,8 +48,10 @@ pub struct Node {
 }
 
 impl Node {
-    /// Builds a node directly. Prefer [`NodeType::create`], which applies
+    /// Builds a node directly. Prefer [`Schema::create`], which applies
     /// attribute defaults and rejects content the schema forbids.
+    ///
+    /// [`Schema::create`]: crate::schema::Schema::create
     #[must_use]
     pub fn new(typ: Arc<NodeType>, attrs: Attrs, content: Fragment, marks: Marks) -> Self {
         Self {
@@ -61,7 +63,9 @@ impl Node {
         }
     }
 
-    /// Builds a text node directly. Prefer [`NodeType::text`].
+    /// Builds a text node directly. Prefer [`Schema::text`].
+    ///
+    /// [`Schema::text`]: crate::schema::Schema::text
     #[must_use]
     pub fn new_text(typ: Arc<NodeType>, text: impl Into<Arc<str>>, marks: Marks) -> Self {
         Self {

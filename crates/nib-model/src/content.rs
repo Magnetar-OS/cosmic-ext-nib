@@ -534,7 +534,7 @@ impl ContentExpr {
     }
 
     /// Every position where content is required, and the types that may fill
-    /// it. See [`required_positions`].
+    /// it.
     pub fn required_positions(&self) -> impl Iterator<Item = Vec<NodeTypeId>> + '_ {
         required_positions(&self.states)
     }

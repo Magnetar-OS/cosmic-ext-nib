@@ -52,6 +52,12 @@ jobs:
       - name: Test
         run: cargo test --workspace --locked
 
+      # A link that does not resolve is a dead link on docs.rs.
+      - name: Docs
+        run: cargo doc --workspace --no-deps --locked
+        env:
+          RUSTDOCFLAGS: -D warnings
+
       # The widget without its default `clipboard` feature, which is a
       # supported configuration with a code path of its own.
       - name: Build the widget without default features
