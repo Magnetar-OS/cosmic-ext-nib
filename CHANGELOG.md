@@ -5,6 +5,8 @@ releases before 1.2.0 are described by their git tags.
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-11-01
+
 ### Changed
 
 - The minimum supported Rust version is 1.99.1, raised from 1.99.0. The pinned
