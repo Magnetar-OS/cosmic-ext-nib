@@ -96,8 +96,7 @@ fn write_node(rules: &Rules, node: &Node, out: &mut String) {
         let inner_attrs = if i == 0 {
             attrs
                 .get("__inner_class")
-                .map(|class| ElementAttrs::from([("class".to_owned(), class.clone())]))
-                .unwrap_or_default()
+                .map_or_default(|class| ElementAttrs::from([("class".to_owned(), class.clone())]))
         } else {
             ElementAttrs::new()
         };

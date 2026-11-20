@@ -5,6 +5,15 @@ releases before 1.2.0 are described by their git tags.
 
 ## [Unreleased]
 
+## [1.2.3] - 2026-11-21
+
+### Changed
+
+- The minimum supported Rust version is 1.100.0, raised from 1.99.1. The pinned
+  toolchain and `rust-version` move together.
+- The lockfile builds against libcosmic `be7937d`, zbus 6.4.0 and the other
+  latest compatible releases.
+
 ## [1.2.2] - 2026-11-01
 
 ### Changed
